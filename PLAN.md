@@ -370,6 +370,34 @@ language and renderer, not Vello or Parley. Makepad Studio offers
 live editing without recompiling and Figma-like visual tooling.
 Apps: Robrix (Matrix client), Moly.
 
+Further facts (2026-08-22). Text: Makepad vendors `rustybuzz` and
+`unicode-bidi`, so complex-script shaping exists. Accessibility: one
+reference to AccessKit in the whole repo; a 2025 survey found
+"Narrator cannot detect window chrome or content". Docs: the same
+survey found "no documentation I can find" for the DSL, and crates.io
+releases with no matching git tags. Team: the top two contributors
+on `dev` are from Robius (Robrix) and one other account; the founder
+commits as "Admin". The framework went from `live_design!` (1.0, May
+2025) to the Splash script VM (2.0, 2026) in about a year.
+
+Splash's own agent guide (`splash.md` in the repo) is the strongest
+evidence for the xix thesis. It is a list of runtime gotchas:
+"Every container MUST have `height: Fit`, most common failure mode";
+"`as int` type casting produces NaN"; "Default text color is white";
+"`new_batch: true` required or text renders behind the background
+(invisible)"; "TabBar renders zero-size"; widgets that "silently
+fail"; checkbox state "lost, internal post-processing discards the
+`on_click` scope"; `#x` prefix needed for hex colors containing `e`.
+Every one of these is a value or state the type system could have
+rejected. The design knowledge lives in a markdown file the agent
+must remember, not in the API.
+
+What Makepad has that xix only plans: a working agent loop today.
+`AGENTS.md` documents a Studio remote protocol over JSON lines with
+`WidgetTreeDump`, `WidgetQuery`, `Screenshot`, `Click`, `TypeText`,
+and per-build ids. That is the spec xix's `xix render`, `xix dump`,
+and interaction tooling should meet or exceed.
+
 What it gets right: a tight loop, a designer-facing studio, one
 vocabulary for screens, widgets, layout, and state. What it gives
 up, against our principles: the compiler no longer checks the UI
@@ -741,6 +769,9 @@ https://bevy.org/news/bevy-0-17/, https://bevy.org/news/bevy-0-18/
 - Glass-HQ/gpui: https://github.com/Glass-HQ/gpui
 - Floem: https://github.com/lapce/floem
 - Makepad: https://makepad.nl/, https://github.com/makepad/makepad,
-  https://makepad.rs/guide/start/makepad-framework-architecture
+  https://makepad.rs/guide/start/makepad-framework-architecture,
+  splash.md and AGENTS.md in the makepad repo (dev branch)
+- 2025 survey of Rust GUI libraries (boringcactus):
+  https://www.boringcactus.com/2025/04/13/2025-survey-of-rust-gui-libraries.html
 - Raph Levien, Xilem: an architecture for UI in Rust (2022):
   https://raphlinus.github.io/rust/gui/2022/05/07/ui-architecture.html
