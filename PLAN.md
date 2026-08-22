@@ -6,7 +6,8 @@ video editors, trading and chart GUIs. Applications where quality and
 customizability matter more than time to first demo.
 
 This is a working document. It compiles what we know, records the
-decisions we make, and lists what is still open. Sections marked
+decisions we make, and lists what is still open. The architecture
+proposal built on this evidence is [DESIGN.md](DESIGN.md). Sections marked
 OPEN are not decided. Edit it as the plan changes.
 
 Last updated: 2026-08-21.
