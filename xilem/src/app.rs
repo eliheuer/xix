@@ -237,7 +237,7 @@ where
     }
 
     /// Build the first window's root view. Used by the headless and web runners.
-    #[cfg(any(feature = "screenshot", all(target_arch = "wasm32", feature = "web")))]
+    #[cfg(all(target_arch = "wasm32", feature = "web"))]
     pub(crate) fn into_root_parts(
         mut self,
     ) -> (

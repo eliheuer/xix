@@ -106,6 +106,15 @@ crate-type = ["cdylib"]
 required-features = ["web"]
 
 [[example]]
+name = "tokens"
+
+[[example]]
+name = "tokens_web"
+path = "examples/tokens.rs"
+crate-type = ["cdylib"]
+required-features = ["web"]
+
+[[example]]
 name = "mason"
 # This actually enables scraping for all examples, not just this one.
 # However it is possible to set doc-scrape-examples to false for other specific examples.

@@ -7,17 +7,21 @@
   canvas { width: 320px; height: 480px; display: block; border-radius: 12px; }
 </style>
 <main>
-  <p>calc</p>
+  <p id="title">calc</p>
   <canvas id="calc"></canvas>
 </main>
 <script type="module">
-  import init, { mount } from '../../dist/web/calc/calc_web.js';
-  await init();
+  const params = new URLSearchParams(location.search);
+  const ex = params.get('ex') || 'calc';
+  document.getElementById('title').textContent = ex;
   const canvas = document.getElementById('calc');
+  if (ex === 'tokens') { canvas.style.width = '360px'; canvas.style.height = '420px'; }
+  const { default: init, mount } = await import(`../../dist/web/${ex}/${ex}_web.js`);
+  await init();
   mount(canvas);
   window.__xix_ready = true;
-  // ?test: press 7 + 2 = with synthetic pointer events (canvas CSS px).
-  if (location.search.includes('test')) {
+  // ?test: synthetic pointer events (canvas CSS px). calc: 7 + 2 =. tokens: drag the hue slider.
+  if (params.has('test')) {
     const r = canvas.getBoundingClientRect();
     const tap = (x, y) => {
       for (const type of ['pointermove', 'pointerdown', 'pointerup']) {
@@ -27,9 +31,23 @@
         }));
       }
     };
+    const drag = (x0, y0, x1, y1) => {
+      const ev = (type, x, y, buttons) => canvas.dispatchEvent(new PointerEvent(type, {
+        clientX: r.left + x, clientY: r.top + y, button: 0, buttons, pointerId: 1,
+        pointerType: 'mouse', bubbles: true, cancelable: true,
+      }));
+      ev('pointermove', x0, y0, 0); ev('pointerdown', x0, y0, 1);
+      for (let i = 1; i <= 10; i++) ev('pointermove', x0 + (x1 - x0) * i / 10, y0 + (y1 - y0) * i / 10, 1);
+      ev('pointerup', x1, y1, 0);
+    };
     let t = 200;
-    for (const [x, y] of [[52, 244], [268, 373], [124, 373], [268, 432]]) {
-      setTimeout(() => tap(x, y), t); t += 150;
+    if (ex === 'calc') {
+      for (const [x, y] of [[52, 244], [268, 373], [124, 373], [268, 432]]) {
+        setTimeout(() => tap(x, y), t); t += 150;
+      }
+    } else if (ex === 'tokens') {
+      setTimeout(() => drag(262, 86, 120, 86), t);
+      setTimeout(() => drag(214, 26, 330, 26), t + 300);
     }
   }
 </script>
