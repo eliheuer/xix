@@ -356,6 +356,29 @@ application with THESE needs". The r/rust thread could not be fetched
   drawing contract, a component library with a headless base and a
   styled layer, and a dock system that serializes.
 
+### 6.1 Makepad, the closest project in spirit
+
+Makepad 2.0 (MIT, 6.5k stars, macOS/Windows/Linux/web/iOS/Android)
+calls itself "an AI-accelerated application development environment
+for Rust". Its answer to agent-generated UI is Splash, "a live
+readable UI DSL" so "models can generate UI in small, reviewable
+steps". The August 2026 `counter` example puts application state in
+a script VM (`script_mod! { let state = { counter: 0 } }`) and the
+Rust side mutates it with `script_eval!`. Layout values in the DSL
+are free numbers (`spacing: 12`). Rendering is Makepad's own shader
+language and renderer, not Vello or Parley. Makepad Studio offers
+live editing without recompiling and Figma-like visual tooling.
+Apps: Robrix (Matrix client), Moly.
+
+What it gets right: a tight loop, a designer-facing studio, one
+vocabulary for screens, widgets, layout, and state. What it gives
+up, against our principles: the compiler no longer checks the UI
+(principle 1), the stack is not renderer-agnostic (principle 4), and
+there is a second language with its own runtime to keep consistent.
+xix keeps live editing for data (themes, keymaps, layouts) and puts
+the UI vocabulary in Rust types so diagnostics are the feedback loop.
+See DESIGN.md section 2 and the blog post draft on elih.net.
+
 ## 7. Linebender pieces we can use instead of writing
 
 - **Understory** (forest-rs, Apache-2.0/MIT, `no_std` + alloc,
@@ -717,5 +740,7 @@ https://bevy.org/news/bevy-0-17/, https://bevy.org/news/bevy-0-18/
 - awesome-gpui: https://github.com/zed-industries/awesome-gpui
 - Glass-HQ/gpui: https://github.com/Glass-HQ/gpui
 - Floem: https://github.com/lapce/floem
+- Makepad: https://makepad.nl/, https://github.com/makepad/makepad,
+  https://makepad.rs/guide/start/makepad-framework-architecture
 - Raph Levien, Xilem: an architecture for UI in Rust (2022):
   https://raphlinus.github.io/rust/gui/2022/05/07/ui-architecture.html
