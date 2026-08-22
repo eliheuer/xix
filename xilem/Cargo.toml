@@ -36,17 +36,47 @@ default = ["masonry/default", "masonry_winit/default"]
 # Headless rendering of the app's first window to a PNG, used by
 # `XIX_SCREENSHOT=<path>`; see `Xilem::screenshot`.
 screenshot = ["dep:masonry_testing", "dep:image"]
+# Browser driver: mount an app into an HTML canvas, render with Vello CPU.
+# Only does anything on wasm32; see `xilem::web`.
+web = ["dep:wasm-bindgen", "dep:web-sys", "dep:js-sys", "dep:imaging_vello_cpu", "dep:console_error_panic_hook"]
 
 [dependencies]
 xilem_core.workspace = true
 xilem_masonry.workspace = true
 masonry.workspace = true
-masonry_winit.workspace = true
 winit.workspace = true
 tracing.workspace = true
-tokio = { version = "1.50.0", features = ["rt", "rt-multi-thread", "time", "sync"] }
 masonry_testing = { workspace = true, optional = true }
 image = { workspace = true, optional = true, features = ["png"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+masonry_winit.workspace = true
+tokio = { version = "1.50.0", features = ["rt", "rt-multi-thread", "time", "sync"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+tokio = { version = "1.50.0", features = ["rt", "sync"] }
+wasm-bindgen = { version = "0.2.114", optional = true }
+js-sys = { version = "0.3.91", optional = true }
+console_error_panic_hook = { workspace = true, optional = true }
+imaging_vello_cpu = { workspace = true, optional = true }
+web-sys = { version = "0.3.91", optional = true, features = [
+    "console",
+    "CssStyleDeclaration",
+    "Document",
+    "DomRect",
+    "Element",
+    "Event",
+    "EventTarget",
+    "HtmlCanvasElement",
+    "HtmlElement",
+    "CanvasRenderingContext2d",
+    "ImageData",
+    "KeyboardEvent",
+    "MouseEvent",
+    "PointerEvent",
+    "WheelEvent",
+    "Window",
+] }
 
 [dev-dependencies]
 # Used for `variable_clock`
@@ -68,6 +98,12 @@ winit = { features = ["android-native-activity"], workspace = true }
 
 [lints]
 workspace = true
+
+[[example]]
+name = "calc_web"
+path = "examples/calc.rs"
+crate-type = ["cdylib"]
+required-features = ["web"]
 
 [[example]]
 name = "mason"

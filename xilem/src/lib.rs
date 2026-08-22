@@ -163,21 +163,36 @@ pub use masonry::parley::Alignment as TextAlign;
 pub use masonry::parley::style::FontWeight;
 pub use masonry::peniko::{Blob, Color, ImageBrush, ImageFormat};
 pub use masonry::widgets::InsertNewline;
+#[cfg(not(target_arch = "wasm32"))]
 pub use masonry_winit::app::{EventLoop, EventLoopBuilder, WindowId};
+#[cfg(target_arch = "wasm32")]
+pub use web_shim::{EventLoop, EventLoopBuilder, WindowId};
 
 pub use xilem_masonry::{
     AnyWidgetView, InitialRootWidget, MasonryRoot, Pod, ViewCtx, WidgetView, WidgetViewSequence,
 };
 
 mod app;
+#[cfg(not(target_arch = "wasm32"))]
 mod driver;
 mod window_options;
 mod window_view;
+#[cfg(target_arch = "wasm32")]
+mod web_shim;
+#[cfg(all(target_arch = "wasm32", feature = "web"))]
+pub mod web;
+#[cfg(all(target_arch = "wasm32", feature = "web"))]
+pub use wasm_bindgen;
+#[cfg(all(target_arch = "wasm32", feature = "web"))]
+pub use web_sys;
 
 pub use app::{AppState, ExitOnClose, Xilem};
+#[cfg(not(target_arch = "wasm32"))]
 pub use driver::{MasonryDriver, async_action};
 pub use window_options::WindowOptions;
-pub use window_view::{PodWindow, WindowView, window};
+#[cfg(not(target_arch = "wasm32"))]
+pub use window_view::PodWindow;
+pub use window_view::{WindowView, window};
 
 #[cfg(windows)]
 pub use window_options::WindowOptionsExtWindows;

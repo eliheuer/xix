@@ -440,3 +440,11 @@ pub(crate) fn run(event_loop: EventLoopBuilder) -> Result<(), EventLoopError> {
 fn main() -> Result<(), EventLoopError> {
     run(EventLoop::with_user_event())
 }
+
+// Boilerplate code for the web: identical across all applications which support the browser.
+
+#[cfg(target_arch = "wasm32")]
+#[xilem::wasm_bindgen::prelude::wasm_bindgen]
+pub fn mount(canvas: xilem::web_sys::HtmlCanvasElement) {
+    xilem::web::mount(canvas, || run(EventLoop::with_user_event()));
+}

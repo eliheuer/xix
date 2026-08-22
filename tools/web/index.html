@@ -1,0 +1,18 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>xix web test</title>
+<style>
+  body { margin: 0; background: #222; font: 14px system-ui; color: #ddd; }
+  main { max-width: 720px; margin: 40px auto; }
+  canvas { width: 320px; height: 480px; display: block; border-radius: 12px; }
+</style>
+<main>
+  <p>calc</p>
+  <canvas id="calc"></canvas>
+</main>
+<script type="module">
+  import init, { mount } from '../../dist/web/calc/calc_web.js';
+  await init();
+  mount(document.getElementById('calc'));
+  window.__xix_ready = true;
+</script>

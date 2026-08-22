@@ -13,3 +13,4 @@ plan.md
 .mcp.json
 .github/copilot-instructions.md
 .codex
+/dist/

@@ -3,13 +3,20 @@
 
 use std::sync::Arc;
 
-use masonry::{core::DefaultProperties, theme::BACKGROUND_COLOR, util::debug_panic};
-use masonry_winit::app::{NewWindow, Window, WindowId};
+#[cfg(not(target_arch = "wasm32"))]
+use masonry::{theme::BACKGROUND_COLOR, util::debug_panic};
+use masonry::core::DefaultProperties;
+#[cfg(not(target_arch = "wasm32"))]
+use masonry_winit::app::{NewWindow, Window};
 
-use crate::core::{MessageCtx, Mut, View, ViewElement, ViewMarker};
-use crate::{
-    AnyWidgetView, Color, InitialRootWidget, MasonryRoot, ViewCtx, WidgetView, WindowOptions,
-};
+use crate::WindowId;
+
+#[cfg(not(target_arch = "wasm32"))]
+use crate::core::{MessageCtx, Mut, ViewElement};
+use crate::core::{View, ViewMarker};
+#[cfg(not(target_arch = "wasm32"))]
+use crate::InitialRootWidget;
+use crate::{AnyWidgetView, Color, MasonryRoot, ViewCtx, WidgetView, WindowOptions};
 
 /// A view representing a window.
 pub struct WindowView<State: 'static> {
@@ -73,9 +80,11 @@ impl<State> WindowView<State> {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 /// A newtype wrapper around [`NewWindow`] for implementing [`ViewElement`].
 pub struct PodWindow(pub NewWindow);
 
+#[cfg(not(target_arch = "wasm32"))]
 impl ViewElement for PodWindow {
     type Mut<'a> = &'a mut Window;
 }
@@ -84,6 +93,7 @@ impl<State> ViewMarker for WindowView<State> where State: 'static {}
 
 // TODO: Reconsider how this works.
 // There are *reasonable* arguments for making this be `View<()>`, i.e. the root state is just another local.
+#[cfg(not(target_arch = "wasm32"))]
 impl<State> View<State, (), ViewCtx> for WindowView<State> {
     type Element = PodWindow;
 

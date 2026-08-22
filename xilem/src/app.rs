@@ -7,13 +7,30 @@ use std::sync::Arc;
 use masonry::core::DefaultProperties;
 use masonry::peniko::{Blob, Color};
 use masonry::theme::{BACKGROUND_COLOR, default_property_set};
-use masonry_winit::app::{EventLoopBuilder, MasonryState, MasonryUserEvent, NewWindow, WindowId};
+#[cfg(not(target_arch = "wasm32"))]
+use masonry_winit::app::{MasonryState, MasonryUserEvent, NewWindow};
 use tokio::runtime::Runtime as TokioRuntime;
 use winit::error::EventLoopError;
 
 use crate::core::map_state;
 use crate::window_options::WindowCallbacks;
-use crate::{MasonryDriver, WidgetView, WindowOptions, WindowView};
+#[cfg(not(target_arch = "wasm32"))]
+use crate::MasonryDriver;
+use crate::{EventLoopBuilder, WidgetView, WindowId, WindowOptions, WindowView};
+
+/// The tokio runtime the app hands to views. Multi-threaded natively, current-thread on the web.
+fn new_runtime() -> TokioRuntime {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        TokioRuntime::new().unwrap()
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap()
+    }
+}
 
 // TODO - Rename to `AppLauncher` or something.
 
@@ -28,6 +45,7 @@ pub struct Xilem<State, Logic> {
     // Font data to include in loading.
     fonts: Vec<Blob<u8>>,
     // Callback invoked once on startup, after windows creation.
+    #[cfg(not(target_arch = "wasm32"))]
     on_start: Option<Box<dyn FnOnce(&mut MasonryState<'_>)>>,
 }
 
@@ -66,7 +84,7 @@ impl<State>
             state,
             logic,
             window_options,
-            Arc::new(TokioRuntime::new().unwrap()),
+            Arc::new(new_runtime()),
         )
     }
 
@@ -138,7 +156,7 @@ where
     where
         State: AppState,
     {
-        Self::new_inner(state, logic, Arc::new(TokioRuntime::new().unwrap()))
+        Self::new_inner(state, logic, Arc::new(new_runtime()))
     }
 
     fn new_inner(state: State, logic: Logic, runtime: Arc<TokioRuntime>) -> Self {
@@ -149,6 +167,7 @@ where
             default_properties: None,
             default_base_color: BACKGROUND_COLOR,
             fonts: Vec::new(),
+            #[cfg(not(target_arch = "wasm32"))]
             on_start: None,
         }
     }
@@ -176,12 +195,14 @@ where
     }
 
     /// Registers a callback to be called once the application has started
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn with_on_start(mut self, callback: impl FnOnce(&mut MasonryState<'_>) + 'static) -> Self {
         self.on_start = Some(Box::new(callback));
         self
     }
 
     /// Run app with custom window attributes.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn run_in(mut self, mut event_loop: EventLoopBuilder) -> Result<(), EventLoopError> {
         #[cfg(feature = "screenshot")]
         if let Ok(path) = std::env::var("XIX_SCREENSHOT") {
@@ -198,6 +219,53 @@ where
         let (driver, windows) =
             self.into_driver_and_windows(move |event| proxy.send_event(event).map_err(|err| err.0));
         masonry_winit::app::run_with(event_loop, windows, driver, default_properties)
+    }
+
+    /// On the web there is no event loop to run in. The app is mounted into the canvas
+    /// registered by [`crate::web::mount`]; see that function.
+    #[cfg(target_arch = "wasm32")]
+    pub fn run_in(self, _event_loop: EventLoopBuilder) -> Result<(), EventLoopError> {
+        #[cfg(feature = "web")]
+        {
+            crate::web::run(self);
+            Ok(())
+        }
+        #[cfg(not(feature = "web"))]
+        {
+            panic!("xilem on wasm32 needs the `web` feature")
+        }
+    }
+
+    /// Build the first window's root view. Used by the headless and web runners.
+    #[cfg(any(feature = "screenshot", all(target_arch = "wasm32", feature = "web")))]
+    pub(crate) fn into_root_parts(
+        mut self,
+    ) -> (
+        State,
+        Logic,
+        Arc<TokioRuntime>,
+        DefaultProperties,
+        WindowView<State>,
+        Vec<Blob<u8>>,
+    ) {
+        let default_properties = self
+            .default_properties
+            .take()
+            .unwrap_or_else(default_property_set);
+        let mut windows = (self.logic)(&mut self.state);
+        let mut window_view = windows.next().expect("the app produced no windows");
+        drop(windows);
+        window_view
+            .base_color
+            .get_or_insert(self.default_base_color);
+        (
+            self.state,
+            self.logic,
+            self.runtime,
+            default_properties,
+            window_view,
+            self.fonts,
+        )
     }
 
     /// Render the app's first window once, headless, and write it to `path` as a PNG.
@@ -263,6 +331,7 @@ where
     ///
     /// The given event sink function sends the given event to the event loop
     /// and returns the given event as an error in case the event loop is stopped.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn into_driver_and_windows(
         self,
         proxy: impl Fn(MasonryUserEvent) -> Result<(), MasonryUserEvent> + Send + Sync + 'static,

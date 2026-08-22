@@ -23,8 +23,13 @@ xilem_core.workspace = true
 masonry.workspace = true
 smallvec.workspace = true
 tracing.workspace = true
-tokio = { version = "1.50.0", features = ["rt", "rt-multi-thread", "time", "sync"] }
 usvg.workspace = true
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tokio = { version = "1.50.0", features = ["rt", "rt-multi-thread", "time", "sync"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+tokio = { version = "1.50.0", features = ["rt", "sync"] }
 
 [lints]
 workspace = true

@@ -6412,8 +6412,12 @@ name = "xilem"
 version = "0.4.0"
 dependencies = [
  "anyhow",
+ "console_error_panic_hook",
  "image",
+ "imaging_vello_cpu",
+ "js-sys",
  "masonry",
+ "masonry_testing",
  "masonry_winit",
  "profiling",
  "reqwest",
@@ -6421,6 +6425,8 @@ dependencies = [
  "tokio",
  "tracing",
  "usvg",
+ "wasm-bindgen",
+ "web-sys",
  "winit",
  "xilem_core",
  "xilem_masonry",
