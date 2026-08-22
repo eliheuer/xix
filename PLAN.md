@@ -540,6 +540,67 @@ list as they come in. Paraphrased where the source is not quoted.
   when the API is simple and compiles fast; the real complaint about
   Electron and GTK4 apps is memory, not speed.
 
+## 12. Lessons from Bevy
+
+Bevy is the one large Rust project that solved the object-graph
+problem at scale, and it did it the Rust-native way. What transfers:
+
+- **ECS is the with-the-grain answer to the object graph.** Entities
+  are ids, components live in tables, systems declare what they read
+  and write in their types, and the scheduler checks the access sets
+  once when the schedule is built, then runs disjoint systems in
+  parallel with no per-frame borrow checks. No `Rc<RefCell>`, no
+  runtime borrow panics in the normal path. Masonry already moved
+  this way in 2024 ("Widgets own keys" into `tree_arena`, post-mortem
+  section 5) and planned the "Component" half (typed values attached
+  to widgets); that became the `Property` system.
+- **Change detection by ticks, not observers.** `Changed<T>` queries
+  compare a write tick per component to the system's last-run tick.
+  Fine-grained invalidation with no dependency tracker and no
+  signals: writes are recorded where they happen, reads filter on
+  them. This is the static alternative to Floem-style signals we
+  asked for in option D, and it is cheap.
+- **Relationships as data.** `ChildOf` and `Children` are components
+  with the inverse maintained by the engine, so the tree is data you
+  can query, not pointers you must own. Masonry's `children_ids` and
+  arena are the same idea.
+- **Observers and events for callbacks.** Bevy 0.19 BSN: "BSN
+  entities can easily observe events, making it easy to embed
+  callback-style behaviors in your scenes." Callbacks are systems
+  with declared access, attached to an entity. That is how a button
+  handler gets `&mut` to exactly the state it names and nothing else,
+  checked at schedule-build time. This is closer to principle 1 than
+  either GPUI listeners or Xilem's `&mut State` closures.
+- **Scenes as patches.** BSN builds UI as layered patches over
+  defaults: "You only need to set the fields you care about, and the
+  rest will have their default values." Widgets are parameterized by
+  `SceneComponent` props. This is a theming and composition model:
+  a theme is a patch, a user override is a patch. Compare Masonry's
+  property stack and Understory's style cascade.
+- **Headless widgets under a styled set.** `bevy_ui_widgets`
+  (behavior, no look) under Feathers (the editor's look). Same
+  split as `gpui-base` under `gpui-component`. xix should ship both
+  layers from day one.
+- **Parley.** Bevy migrated to Parley in the 0.19 cycle because it
+  "had meaningfully better documentation and was somewhat nicer to
+  use" than cosmic-text. The Linebender text stack is now validated
+  by the largest Rust engine.
+- **Process.** Bevy prototyped BSN in 0.17, shipped it in 0.19, and
+  says reactivity will be "an ecosystem of competing reactivity
+  implementations" on top of the scene layer rather than one blessed
+  model. Xilem put the reactive model first and the widget engine
+  second; Bevy did the reverse and is further along.
+
+What does not transfer: a full ECS scheduler and world is overkill
+for a UI thread, Bevy's layout (Taffy) and rendering are built for
+games, and a game loop re-runs every system every frame, which a
+UI must not do. The idea to take is not "use Bevy" but "ids plus
+typed components plus tick-based change detection plus declared
+access" as the shape of the widget tree and its invalidation.
+
+Sources: https://bevy.org/news/bevy-0-19/,
+https://bevy.org/news/bevy-0-17/, https://bevy.org/news/bevy-0-18/
+
 ## Sources
 
 - runebender-xilem: `context/*.md`, `ARCHITECTURE.md`, `LLMS.md`,
