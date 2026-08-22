@@ -305,6 +305,21 @@ discussed on Lobsters and r/rust) says, in its own words:
 - "If Xilem is to survive, it will need large, sweeping changes, even
   if that means throwing out a lot of code and starting over."
 
+From the Linebender Zulip thread around the review (August 2026,
+author Olivier Faure): reverse-dependency search "turned up very
+little"; the only high-profile Xilem user is tinymist (a Typst
+renderer); Configura used Masonry for an internal renderer at some
+point. "At the last RustWeek, we basically agreed to put it on the
+backburner for the foreseeable future." The architecture problems
+are "fixable", and he hopes for "a widely advertised Xilem release
+before the end of the year" if he can work on it semi-regularly.
+Planned: a Xilem testing framework wrapping `masonry_testing::
+TestHarness`, and keeping Placehero (the Mastodon "hero app") in the
+repo as continuous dogfooding with fake local data behind a feature
+flag. His read on low adoption: "a lack of some very specific
+features people want (e.g. menus) and a lack of advertising of the
+features we do have."
+
 Two things follow. First, the fork is not a rebellion; the upstream
 diagnosis matches ours. Second, the proposed cure moves type checks
 to runtime ("some type checking will move from compile time to
@@ -656,6 +671,48 @@ list as they come in. Paraphrased where the source is not quoted.
 - "I also really like the signal architecture that Floem uses, so
   that maybe another source of inspiration for the new Xilem
   redesign." (Now option D in 8.2.)
+- Shnatsel: "what is Xilem's raison d'être? Why does it exist? And
+  does it still have a reason to exist, as opposed to improving Iced
+  or Slint instead?" Over 40 Rust GUI libraries and "not a single
+  production-ready one"; one more needs "a really good reason". (xix
+  must answer this in one paragraph; see DESIGN.md section 2.)
+- dman-os: "the biggest gap today is a good, production ready native
+  widget set and good platform support", not the reactive layer;
+  Linebender should "prioritize having good, cross-platform native
+  widget lib over innovation on reactive layer"; would like a Masonry
+  backend for Leptos considered; Makepad "appears even more
+  maintenance mode than Xilem"; GPUI "the most production ready and
+  the one with the most mindshare" but "built around a product with
+  minimal abstractions". Signals: "the least magical runtime and
+  programming model"; Jetpack Compose the most elegant facade, "but
+  they had to build a whole language around it".
+- Noah: "a growing trend is to move more towards fine grained
+  reactivity + elements checked at runtime (signals/rc refcell).
+  Constraining things to compile time in Rust for GUIs feels like a
+  losing battle." (The counter-position to principle 1; answered in
+  DESIGN.md section 3.)
+- Markus Kohlhase: uses `xilem_web` because of explicit state. The
+  Leptos trap: `let v = count.get(); view! { <p>{v}</p> }` compiles
+  and silently does not update; "`.get()` has a side effect and
+  behaves differently depending on where it was called." In xilem_web
+  "`html::p(state.clicks)`" and "`.on_click(|state: &mut AppState, _|
+  state.clicks += 1)`": "no magic", "with xilem, it's a bit like Rust
+  itself: if it compiles, it does what it's supposed to." Prefers
+  "explicit state rather than local, implicit, hidden state."
+- Muhammad Ragib Hasin: Iced's "full on Elm architecture is not my
+  cookie"; Leptos's "macro heavy architecture bounced me right off";
+  Xilem's API "however cumbersome, is the least painful"; "maybe we
+  could approach a leptos-like DX without the macros."
+- Mohamed: passed on Xilem, writing a reactive framework on
+  masonry/parley/taffy; "disciplined MVC against a diffable retained
+  widget tree can be given an MVU, MVP, MVVM API without much
+  trouble."
+- voedipus, Austin M. Reppert, Horu: GPUI "the most usable GUI lib
+  in Rust right now" and also "slow", "really badly optimized"
+  (matches section 4.2).
+- Austin M. Reppert: imgui uses string ids the same way as the
+  proposed components; virtual lists should be low priority.
+
 - Wojciech Niedźwiedź (three years on a GPU-driven 2D renderer with
   a separate UI; toolkit path react, dioxus, leptos, tachys): signal
   benchmarks assume "very small application state produces large DOM
@@ -669,7 +726,7 @@ list as they come in. Paraphrased where the source is not quoted.
 - A `xilem_web` user: uses it "precisely because it doesn't use any
   signals"; implemented real projects with Leptos and is "extremely
   dissatisfied"; "reliability is more important than performance."
-- A Xilem core contributor (returning after a hiatus): wants Xilem
+- Philipp Mildenberger (Xilem core, returning after a hiatus): wants Xilem
   to stay "this mix of immediate and declarative GUI inspired by
   SwiftUI, i.e. not hidden stateful components a la React." The
   complexity is accidental, from generalizing through Xilem Core
@@ -685,7 +742,7 @@ list as they come in. Paraphrased where the source is not quoted.
   merge `ViewSequence` with `View` statically
   (`ViewSequence::ELEMENTS_COUNT`), more static sugar, no macros.
   (Now in 8.2 and 8.1.)
-- An audio plugin developer: came to Xilem for "the minimal core"
+- Bill Johnson (audio plugin developer): came to Xilem for "the minimal core"
   that let them (1) integrate their own layout system (taffy) and
   (2) "retain control over the event loop. Other libraries have you
   call a function like run() that blocks for the duration of the
