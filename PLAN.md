@@ -420,6 +420,29 @@ See DESIGN.md section 2 and the blog post draft on elih.net.
   hit testing, and `understory_node_graph` for node editors. Masonry
   already depends on `understory_virtual_list`. This is the missing
   application-layer substrate, headless, waiting for a host.
+  How xix would use it (dependency, not fork; checked 2026-08-22):
+
+  | Understory crate | xix subsystem | Notes |
+  |---|---|---|
+  | `overlay`, `anchor` | menus, context menus, popovers, tooltips, dialogs | Published 0.1.0 (2026-08-08). Host in Masonry layers. |
+  | `focus`, `responder`, `event_state` | focus chain, action dispatch, hover/click/drag machines | Replaces the per-app gesture layer (`mouse.rs`). |
+  | `index`, `box_tree`, `precise_hit` | canvas hit testing, visibility, transform groups | Box tree holds world AABBs under affines. |
+  | `view2d` | `Viewport2D` | Published 0.1.0. Compare with runebender-core `ViewPort`. |
+  | `selection` | canvas and list selection model | |
+  | `virtual_list`, `outline` | tables, lists, tree views | Masonry already uses `virtual_list`. |
+  | `node_graph` | node editor kit | Git only. |
+  | `property`, `style`, `presentation`, `box_decoration`, `transition` | design kernel cascade, retained presentation | Overlaps Masonry's `Property` system; pick one or bridge. |
+  | `timing`, `animation`, `motion` | motion tokens, timers | `timing` published 0.1.2. |
+
+  Only five crates are on crates.io (`anchor`, `overlay`, `timing`,
+  `view2d`, `virtual_list`); the rest are git dependencies at a
+  pinned rev, which principle 6 allows with a lockfile. Risks: nine
+  months old, two main authors, fine-grained crate boundaries that
+  may merge or split, and the property/style overlap with Masonry.
+  Plan: depend on the published crates first, vendor nothing, and
+  send fixes upstream; the prototype in section 9 decides the
+  cascade question.
+
 - **Vello** 0.8, Vello Hybrid (beta), Vello CPU, through the
   `imaging` abstraction. Compute-based rasterization handles
   path-heavy scenes without the per-path render-pass breaks GPUI has.
@@ -587,6 +610,11 @@ problem rather than the `State` parameter.
   and behavior at the vertex counts that broke GPUI.
 - How much of upstream Masonry changed between `7819435e` and main
   today, and how long one rebase takes.
+- Prototype: resolve one token (`Space::M` under a `Density` and a
+  region) through Masonry's `Property` cascade and through
+  `understory_style`, and compare API, cost, and how each handles
+  inheritance and animation slots. Decides whether the design kernel
+  sits on Masonry properties, Understory properties, or a bridge.
 - Prototype: a static `View` with `ViewSequence` folded in and
   compile-time element counts, plus tick-based change detection on
   Masonry properties. Compare compile time, error messages, and
