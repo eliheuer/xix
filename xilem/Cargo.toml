@@ -33,6 +33,9 @@ name = "android.permission.INTERNET"
 
 [features]
 default = ["masonry/default", "masonry_winit/default"]
+# Headless rendering of the app's first window to a PNG, used by
+# `XIX_SCREENSHOT=<path>`; see `Xilem::screenshot`.
+screenshot = ["dep:masonry_testing", "dep:image"]
 
 [dependencies]
 xilem_core.workspace = true
@@ -42,6 +45,8 @@ masonry_winit.workspace = true
 winit.workspace = true
 tracing.workspace = true
 tokio = { version = "1.50.0", features = ["rt", "rt-multi-thread", "time", "sync"] }
+masonry_testing = { workspace = true, optional = true }
+image = { workspace = true, optional = true, features = ["png"] }
 
 [dev-dependencies]
 # Used for `variable_clock`

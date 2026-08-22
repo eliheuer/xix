@@ -183,6 +183,12 @@ where
 
     /// Run app with custom window attributes.
     pub fn run_in(mut self, mut event_loop: EventLoopBuilder) -> Result<(), EventLoopError> {
+        #[cfg(feature = "screenshot")]
+        if let Ok(path) = std::env::var("XIX_SCREENSHOT") {
+            self.screenshot(std::path::Path::new(&path))
+                .expect("XIX_SCREENSHOT: headless render failed");
+            return Ok(());
+        }
         let event_loop = event_loop.build()?;
         let proxy = event_loop.create_proxy();
         let default_properties = self
@@ -192,6 +198,65 @@ where
         let (driver, windows) =
             self.into_driver_and_windows(move |event| proxy.send_event(event).map_err(|err| err.0));
         masonry_winit::app::run_with(event_loop, windows, driver, default_properties)
+    }
+
+    /// Render the app's first window once, headless, and write it to `path` as a PNG.
+    ///
+    /// This is the `XIX_SCREENSHOT` path used by `run_in`. It builds the view tree
+    /// exactly as the driver would, hosts the root widget in a
+    /// [`masonry_testing::TestHarness`], rasterizes one frame with Vello CPU, and
+    /// exits without creating a window or an event loop. Size and background come
+    /// from the window's options, falling back to 400 x 400 and the default base color.
+    #[cfg(feature = "screenshot")]
+    pub fn screenshot(mut self, path: &std::path::Path) -> Result<(), image::ImageError> {
+        use masonry_testing::{TestHarness, TestHarnessParams};
+        use winit::dpi::PhysicalSize;
+        use xilem_core::View as _;
+        use xilem_masonry::{InitialRootWidget, ViewCtx};
+
+        #[derive(Debug)]
+        struct NopProxy;
+        impl xilem_core::RawProxy for NopProxy {
+            fn send_message(
+                &self,
+                _path: Arc<[xilem_core::ViewId]>,
+                _message: xilem_core::SendMessage,
+            ) -> Result<(), xilem_core::ProxyError> {
+                Ok(())
+            }
+            fn dyn_debug(&self) -> &dyn std::fmt::Debug {
+                self
+            }
+        }
+
+        let default_properties = self
+            .default_properties
+            .take()
+            .unwrap_or_else(default_property_set);
+        let mut windows = (self.logic)(&mut self.state);
+        let window_view = windows
+            .next()
+            .expect("XIX_SCREENSHOT: the app produced no windows");
+        let size = window_view
+            .options
+            .initial
+            .inner_size
+            .map(|size| size.to_physical::<u32>(1.0))
+            .unwrap_or(PhysicalSize::new(400, 400));
+        let background = window_view.base_color.unwrap_or(self.default_base_color);
+
+        let mut ctx = ViewCtx::new(Arc::new(NopProxy), self.runtime.clone());
+        let (InitialRootWidget(pod), _view_state) =
+            window_view.masonry_root.build(&mut ctx, &mut self.state);
+
+        let mut params = TestHarnessParams::default().with_size(size);
+        params.background_color = background;
+        let mut harness = TestHarness::create_with(default_properties, pod.new_widget, params);
+        let image = harness.render();
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        image.save(path)
     }
 
     /// Builds the [`MasonryDriver`] and the initial windows.

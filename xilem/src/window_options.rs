@@ -35,7 +35,7 @@ pub(crate) struct ReactiveWindowAttrs {
 /// These are attributes the user can change, so we cannot make them reactive.
 #[derive(Clone, Debug)]
 pub(crate) struct InitialAttrs {
-    inner_size: Option<Size>,
+    pub(crate) inner_size: Option<Size>,
     position: Option<Position>,
     transparent: bool,
     // TODO: move window_icon to ReactiveWindowAttrs once the winit type implements PartialEq
