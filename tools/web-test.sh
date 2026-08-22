@@ -12,5 +12,5 @@ sleep 1
 chrome="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 "$chrome" --headless=new --disable-gpu --hide-scrollbars --window-size="$size" \
   --virtual-time-budget=4000 --run-all-compositor-stages-before-draw \
-  --screenshot="$out" "http://127.0.0.1:$port/tools/web/index.html" 2>/Users/eli/Temp/xix-chrome.log
+  --screenshot="$out" "http://127.0.0.1:$port/tools/web/index.html${XIX_QUERY:-}" 2>/Users/eli/Temp/xix-chrome.log
 echo "$out"

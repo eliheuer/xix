@@ -13,6 +13,23 @@
 <script type="module">
   import init, { mount } from '../../dist/web/calc/calc_web.js';
   await init();
-  mount(document.getElementById('calc'));
+  const canvas = document.getElementById('calc');
+  mount(canvas);
   window.__xix_ready = true;
+  // ?test: press 7 + 2 = with synthetic pointer events (canvas CSS px).
+  if (location.search.includes('test')) {
+    const r = canvas.getBoundingClientRect();
+    const tap = (x, y) => {
+      for (const type of ['pointermove', 'pointerdown', 'pointerup']) {
+        canvas.dispatchEvent(new PointerEvent(type, {
+          clientX: r.left + x, clientY: r.top + y, button: 0, buttons: type === 'pointerdown' ? 1 : 0,
+          pointerId: 1, pointerType: 'mouse', bubbles: true, cancelable: true,
+        }));
+      }
+    };
+    let t = 200;
+    for (const [x, y] of [[52, 244], [268, 373], [124, 373], [268, 432]]) {
+      setTimeout(() => tap(x, y), t); t += 150;
+    }
+  }
 </script>
