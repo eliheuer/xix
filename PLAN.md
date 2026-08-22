@@ -48,6 +48,12 @@ These come first because every later choice is tested against them.
 6. **Builds on another machine.** Public, pinned, reproducible.
    Every dependency from crates.io or a public git rev with a
    committed lockfile. Stable Rust for the native build.
+7. **A library, not a framework.** The host owns the event loop and
+   the threads. No blocking `run()` as the only entry point; a
+   caller must be able to drive the framework from its own loop
+   (winit, baseview in an audio plugin, a browser frame callback).
+   No thread-local state anywhere in the framework. Layout is a
+   replaceable module, not a hard dependency.
 
 ## 2. Why a fork, in one paragraph
 
@@ -387,7 +393,7 @@ discussion, not a decision.
 | Spatial, overlay, focus, properties, viewport, node graph | Understory | dependency, contribute |
 | Widget engine (`masonry_core`, `masonry`, `masonry_winit`, `masonry_testing`, `tree_arena`) | Xilem repo | **fork**, stay close, upstream what they accept |
 | Reactive layer (`xilem_core`, `xilem_masonry`, `xilem`) | Xilem repo | **fork and simplify**, see 8.2 |
-| `xilem_web`, `placehero`, most examples | Xilem repo | drop |
+| `xilem_web`, `placehero`, most examples | Xilem repo | drop (the web generalization in `xilem_core` is the main source of accidental complexity, see 8.2) |
 | Application layer: actions, keymaps, menus, docking, tabs, command palette, theme tokens, gesture recognizer, viewport and tool framework, canvas with retained scene, virtual table, charts | new | **build**, this is the product |
 | Web driver for Masonry (winit on wasm or a direct WebGPU driver) | new | build, runebender-web proves Vello in the browser |
 
@@ -454,6 +460,39 @@ Open question: whether the same invalidation precision can be had
 with static types, for example by deriving dependency sets at compile
 time from what a view reads, instead of a runtime tracker.
 
+Verdict after the comments in section 11: signals are not the
+driver. The benchmark case for signals is "very small application
+state produces a large DOM tree"; graphics apps are the opposite
+(large state, moderate tree), where a signal per datum is the cost,
+not the saving. Signal libraries also keep their runtime in
+thread-local storage, which breaks principle 7. If xix offers
+signals at all, it is as an opt-in tool for async-heavy state, on
+top of a static model. Tick-based change detection (section 12) is
+the preferred mechanism for "nothing is rebuilt that did not
+change".
+
+**The static direction, made concrete.** Several contributors point
+the same way: keep the SwiftUI-like mix of immediate and declarative
+with no hidden stateful components; treat the complexity as
+accidental, caused by generalizing `xilem_core` over both Masonry and
+the DOM under Rust's orphan rules (`OneOfCtx`, `OrphanView`); put the
+reactive layer in one crate specialized for Masonry; merge
+`ViewSequence` into `View` with static element counts
+(`ViewSequence::ELEMENTS_COUNT` was already planned); add static
+type sugar while keeping trait bounds in check; stay macro-free. The
+ambition beyond that: "very detailed composable components in the
+style of the diesel query builder which allow skipping entire steps
+of render/tree building, maybe even at compile time". In other words,
+use the type system to know the shape of the tree before runtime, and
+skip work because of it. That is the zero-cost reading of principle
+1, and it is the opposite of type erasure.
+
+Recommendation to discuss (revised): a static view layer in one
+crate, specialized for Masonry, with `ViewSequence` folded into
+`View`, compile-time tree shape where the structure is static, and
+option B's one-way flow for app state. Tick-based change detection
+for invalidation. Signals, if ever, opt-in. Original text follows.
+
 Recommendation to discuss: B for the framework core, with a small,
 explicit, typed escape for local component state (so a text field
 can own its buffer without threading it through the app), and the
@@ -496,6 +535,13 @@ problem rather than the `State` parameter.
   and behavior at the vertex counts that broke GPUI.
 - How much of upstream Masonry changed between `7819435e` and main
   today, and how long one rebase takes.
+- Prototype: a static `View` with `ViewSequence` folded in and
+  compile-time element counts, plus tick-based change detection on
+  Masonry properties. Compare compile time, error messages, and
+  per-drag work against Xilem 0.4 on the Runebender glyph grid.
+- Prototype: drive Masonry from a caller-owned loop (baseview or a
+  bare winit loop) with no framework-owned thread-locals, to prove
+  principle 7 before the API hardens.
 
 ## 10. Next steps
 
@@ -530,6 +576,43 @@ list as they come in. Paraphrased where the source is not quoted.
 - "I also really like the signal architecture that Floem uses, so
   that maybe another source of inspiration for the new Xilem
   redesign." (Now option D in 8.2.)
+- Wojciech Niedźwiedź (three years on a GPU-driven 2D renderer with
+  a separate UI; toolkit path react, dioxus, leptos, tachys): signal
+  benchmarks assume "very small application state produces large DOM
+  tree"; real applications are the opposite. "Having signals as an
+  additional optimization tool might be fine, going signal-first is
+  a dead end, xilem will never be able to achieve good performance
+  for real-time apps." The biggest win: "very detailed composable
+  components in style of diesel query builder which allow to skip
+  entire steps of render/tree building, maybe even at compile time."
+  (Now in 8.2, the static direction.)
+- A `xilem_web` user: uses it "precisely because it doesn't use any
+  signals"; implemented real projects with Leptos and is "extremely
+  dissatisfied"; "reliability is more important than performance."
+- A Xilem core contributor (returning after a hiatus): wants Xilem
+  to stay "this mix of immediate and declarative GUI inspired by
+  SwiftUI, i.e. not hidden stateful components a la React." The
+  complexity is accidental, from generalizing through Xilem Core
+  across web and Masonry under Rust's orphan rules (`OneOfCtx`,
+  `OrphanView`). "I'm not really fond of removing a lot of the
+  statics though, making it more dynamic and thus more runtime-error-
+  prone." Strict types "help put the LLMs feet down via the
+  compiler." App state in async-heavy apps needs redesign; signals
+  "can still be worthwhile and a nice addition, especially when
+  having a lot of async stuff going on, but probably shouldn't be
+  the main driver of state." In hindsight: "most of it in one crate
+  with more specialization", accept that web and Masonry diverge,
+  merge `ViewSequence` with `View` statically
+  (`ViewSequence::ELEMENTS_COUNT`), more static sugar, no macros.
+  (Now in 8.2 and 8.1.)
+- An audio plugin developer: came to Xilem for "the minimal core"
+  that let them (1) integrate their own layout system (taffy) and
+  (2) "retain control over the event loop. Other libraries have you
+  call a function like run() that blocks for the duration of the
+  application." Signals "store info in thread-local variables which
+  is tricky with audio plugins because the UI is usually a side
+  thread and the host application controls threading." (Now
+  principle 7.)
 - Lobsters, objectif_lune: building anything moderately complex on
   Xilem and Masonry directly was "brutal"; praise for Qt's
   signals/slots and for Slint separating UI declaration from logic.
