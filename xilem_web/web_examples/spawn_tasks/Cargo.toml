@@ -1,0 +1,23 @@
+[package]
+name = "spawn_tasks"
+license.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "spawn_tasks"
+test = false
+doctest = false
+doc = false
+bench = false
+
+[lints]
+workspace = true
+
+[dependencies]
+console_error_panic_hook = "0.1.7"
+console_log = { version = "1.0.0", features = ["color"] }
+futures-util = "0.3.32"
+gloo-timers = { version = "0.3.0", features = ["futures"] }
+log = "0.4.29"
+xilem_web = { path = "../.." }
