@@ -1,20 +1,87 @@
 // Copyright 2024 the Xilem Authors
 // SPDX-License-Identifier: Apache-2.0
 
-//! A simple calculator example
+//! A calculator.
+//!
+//! This is the upstream Xilem calculator reworked to look designed.
+//! Everything visible comes from the `tokens` module: spacing steps,
+//! radii, text sizes, and colors by role. The view code below has no
+//! raw numbers and no raw colors.
+//!
+//! xix note. Reworking this example forced these things, which the
+//! framework should own instead of every example:
+//! - Tokens as types: `Space`, `Radius`, `Text`, `Role` (here: consts).
+//! - Button roles (digit, operator, function, primary) with hover and
+//!   pressed colors derived from the role, not set per widget.
+//! - Relational spacing: window inset > section gap > key gap.
+//! - Text alignment to the end for a numeric display, and tabular
+//!   figures (not available yet; the display jitters as digits change).
+//! - A "display" part: a primary line and a muted secondary line.
+//! - An API trap: `label(..).color(..)` wraps the view in a style `Prop`,
+//!   after which `Label`'s own builders (`text_alignment`) are gone.
+//!   Builder order should not matter.
 
 use masonry::core::{PropertyStack, Selector};
-use masonry::layout::{AsUnit, Length};
+use masonry::properties::Dimensions;
 use masonry::properties::types::{CrossAxisAlignment, MainAxisAlignment};
 use masonry::theme::default_property_set;
 use winit::dpi::LogicalSize;
 use winit::error::EventLoopError;
-use xilem::style::{BorderColor, Style};
+use xilem::style::{Background, BorderColor, Style};
 use xilem::view::{
-    FlexSequence, FlexSpacer, GridExt, GridParams, GridSequence, GridTrackSize, button, flex_row,
-    grid, label, repeat_tracks, text_button,
+    FlexExt as _, GridSequence, GridTrackSize, button, flex_col, grid, label, repeat_tracks,
 };
-use xilem::{Color, EventLoop, EventLoopBuilder, WidgetView, WindowOptions, Xilem, palette};
+use xilem::{Color, EventLoop, EventLoopBuilder, TextAlign, WidgetView, WindowOptions, Xilem};
+
+/// Design tokens. The only place in this file where a number or a color is written.
+mod tokens {
+    use masonry::layout::Length;
+    use xilem::Color;
+
+    /// Spacing scale, 4 pt base.
+    pub(crate) mod space {
+        use super::Length;
+        pub(crate) const XS: Length = Length::const_px(4.);
+        pub(crate) const S: Length = Length::const_px(8.);
+        pub(crate) const M: Length = Length::const_px(12.);
+        pub(crate) const L: Length = Length::const_px(20.);
+    }
+
+    pub(crate) mod radius {
+        use super::Length;
+        pub(crate) const M: Length = Length::const_px(12.);
+    }
+
+    /// Text sizes, in px.
+    pub(crate) mod text {
+        pub(crate) const DISPLAY: f32 = 44.;
+        pub(crate) const SECONDARY: f32 = 18.;
+        pub(crate) const KEY: f32 = 20.;
+    }
+
+    /// Colors by role.
+    pub(crate) mod role {
+        use super::Color;
+        pub(crate) const SURFACE: Color = Color::from_rgb8(0x15, 0x15, 0x17);
+        pub(crate) const TEXT: Color = Color::from_rgb8(0xf4, 0xf4, 0xf5);
+        pub(crate) const TEXT_MUTED: Color = Color::from_rgb8(0x8f, 0x8f, 0x97);
+
+        /// Digit keys.
+        pub(crate) const KEY: Color = Color::from_rgb8(0x2a, 0x2a, 0x2e);
+        /// Function keys: clear, delete, negate.
+        pub(crate) const KEY_FUNCTION: Color = Color::from_rgb8(0x3a, 0x3a, 0x40);
+        /// Operator keys.
+        pub(crate) const KEY_OPERATOR: Color = Color::from_rgb8(0x3b, 0x6e, 0xc4);
+        /// The primary action: equals.
+        pub(crate) const KEY_PRIMARY: Color = Color::from_rgb8(0xe0, 0x8a, 0x3c);
+
+        /// Hover and pressed states are the same overlay for every key role.
+        pub(crate) const KEY_HOVER_BORDER: Color = Color::from_rgba8(0xff, 0xff, 0xff, 0x40);
+        pub(crate) const KEY_PRESSED: Color = Color::from_rgba8(0xff, 0xff, 0xff, 0x24);
+    }
+}
+
+use tokens::{radius, role, space, text};
 
 #[derive(Copy, Clone)]
 enum MathOperator {
@@ -190,108 +257,144 @@ impl Calculator {
         }
         self.set_current_number(num);
     }
+
+    /// The secondary display line: the pending expression.
+    fn expression_text(&self) -> String {
+        let mut parts: Vec<&str> = Vec::new();
+        if self.operation.is_some() || self.result.is_some() {
+            parts.push(&self.numbers[0]);
+        }
+        if let Some(op) = self.operation {
+            parts.push(op.as_str());
+        }
+        if self.result.is_some() {
+            parts.push(&self.numbers[1]);
+            parts.push("=");
+        }
+        parts.join(" ")
+    }
+
+    /// The primary display line: the result, or the number being entered.
+    fn entry_text(&self) -> String {
+        if let Some(result) = &self.result {
+            return result.clone();
+        }
+        let current = self.current_number();
+        if current.is_empty() {
+            "0".into()
+        } else {
+            current.to_string()
+        }
+    }
 }
 
-fn num_row(nums: [&'static str; 3]) -> impl GridSequence<Calculator> {
-    nums.map(digit_button)
+/// Which kind of key a button is. Decides its color.
+#[derive(Copy, Clone)]
+enum KeyRole {
+    Digit,
+    Function,
+    Operator,
+    Primary,
 }
 
-const DISPLAY_FONT_SIZE: f32 = 30.;
-const GRID_GAP: Length = Length::const_px(2.);
-fn app_logic(data: &mut Calculator) -> impl WidgetView<Calculator> + use<> {
-    grid((
-        // Display
-        centered_flex_row((
-            FlexSpacer::Flex(0.1),
-            display_label(data.numbers[0].as_ref()),
-            data.operation
-                .map(|operation| display_label(operation.as_str())),
-            display_label(data.numbers[1].as_ref()),
-            data.result.is_some().then(|| display_label("=")),
-            data.result
-                .as_ref()
-                .map(|result| display_label(result.as_ref())),
-            FlexSpacer::Flex(0.1),
-        ))
-        .grid_params(GridParams::new().with_width(4)),
-        // Top row
-        one_button(
-            label("CE").color(if data.get_current_number().is_empty() {
-                palette::css::MEDIUM_VIOLET_RED
-            } else {
-                palette::css::WHITE
-            }),
-            Calculator::clear_entry,
-        ),
-        one_button(label("C"), Calculator::clear_all),
-        one_button(label("DEL"), Calculator::on_delete),
-        operator_button(MathOperator::Divide),
-        num_row(["7", "8", "9"]),
-        operator_button(MathOperator::Multiply),
-        num_row(["4", "5", "6"]),
-        operator_button(MathOperator::Subtract),
-        num_row(["1", "2", "3"]),
-        operator_button(MathOperator::Add),
-        // bottom row
-        one_button(label("±"), Calculator::negate),
-        digit_button("0"),
-        one_button(label("."), |data: &mut Calculator| {
-            data.on_entered_digit(".");
-        }),
-        one_button(label("="), Calculator::on_equals),
-    ))
-    .columns(repeat_tracks(4, GridTrackSize::FRACTION))
-    .rows(repeat_tracks(6, GridTrackSize::FRACTION))
-    .gap(GRID_GAP)
+impl KeyRole {
+    fn color(self) -> Color {
+        match self {
+            Self::Digit => role::KEY,
+            Self::Function => role::KEY_FUNCTION,
+            Self::Operator => role::KEY_OPERATOR,
+            Self::Primary => role::KEY_PRIMARY,
+        }
+    }
 }
 
-/// Creates a horizontal centered flex row designed for the display portion of the calculator.
-fn centered_flex_row<State: 'static, Seq: FlexSequence<State> + Send + Sync + 'static>(
-    sequence: Seq,
-) -> impl WidgetView<State, ()> {
-    flex_row(sequence)
-        .cross_axis_alignment(CrossAxisAlignment::Center)
-        .main_axis_alignment(MainAxisAlignment::Start)
-        .gap(5.px())
-}
-
-/// Returns a label intended to be used in the calculator's top display.
-/// The default text size is out of proportion for this use case.
-fn display_label(text: &str) -> impl WidgetView<Calculator> + use<> {
-    label(text).text_size(DISPLAY_FONT_SIZE)
-}
-
-/// Returns one button
-fn one_button(
-    content: impl WidgetView<Calculator>,
+/// One calculator key.
+fn key(
+    text: &'static str,
+    key_role: KeyRole,
     callback: impl Fn(&mut Calculator) + Send + Sync + 'static,
 ) -> impl WidgetView<Calculator> {
-    const BLUE: Color = Color::from_rgb8(0x00, 0x8d, 0xdd);
-    button(content, callback)
-        .background_color(BLUE)
-        .corner_radius(10.px())
+    button(label(text).text_size(text::KEY).color(role::TEXT), callback)
+        .dims(Dimensions::STRETCH)
+        .background_color(key_role.color())
+        .corner_radius(radius::M)
 }
 
-/// Returns a button that triggers the calculator's operator handler,
-/// `on_entered_operator()`.
-fn operator_button(math_operator: MathOperator) -> impl WidgetView<Calculator> {
-    one_button(
-        label(math_operator.as_str()),
+fn digit(digit: &'static str) -> impl WidgetView<Calculator> {
+    key(digit, KeyRole::Digit, |data: &mut Calculator| {
+        data.on_entered_digit(digit);
+    })
+}
+
+fn operator(math_operator: MathOperator) -> impl WidgetView<Calculator> {
+    key(
+        math_operator.as_str(),
+        KeyRole::Operator,
         move |data: &mut Calculator| {
             data.on_entered_operator(math_operator);
         },
     )
 }
 
-/// A button which adds `digit` to the current input when pressed
-fn digit_button(digit: &'static str) -> impl WidgetView<Calculator> {
-    const GRAY: Color = Color::from_rgb8(0x3a, 0x3a, 0x3a);
+fn digit_row(nums: [&'static str; 3]) -> impl GridSequence<Calculator> {
+    nums.map(digit)
+}
 
-    text_button(digit, |data: &mut Calculator| {
-        data.on_entered_digit(digit);
-    })
-    .background_color(GRAY)
-    .corner_radius(10.px())
+/// The display: a muted expression line above the entry line, both aligned to the end.
+fn display(data: &Calculator) -> impl WidgetView<Calculator> + use<> {
+    flex_col((
+        label(data.expression_text())
+            .text_size(text::SECONDARY)
+            .text_alignment(TextAlign::End)
+            .color(role::TEXT_MUTED),
+        label(data.entry_text())
+            .text_size(text::DISPLAY)
+            .text_alignment(TextAlign::End)
+            .color(role::TEXT),
+    ))
+    .cross_axis_alignment(CrossAxisAlignment::End)
+    .main_axis_alignment(MainAxisAlignment::End)
+    .gap(space::XS)
+    .padding(space::M)
+}
+
+fn keypad(data: &Calculator) -> impl WidgetView<Calculator> + use<> {
+    let can_clear_entry = !data.get_current_number().is_empty() || data.result.is_some();
+    grid((
+        key(
+            "CE",
+            if can_clear_entry {
+                KeyRole::Function
+            } else {
+                KeyRole::Digit
+            },
+            Calculator::clear_entry,
+        ),
+        key("C", KeyRole::Function, Calculator::clear_all),
+        key("DEL", KeyRole::Function, Calculator::on_delete),
+        operator(MathOperator::Divide),
+        digit_row(["7", "8", "9"]),
+        operator(MathOperator::Multiply),
+        digit_row(["4", "5", "6"]),
+        operator(MathOperator::Subtract),
+        digit_row(["1", "2", "3"]),
+        operator(MathOperator::Add),
+        key("±", KeyRole::Function, Calculator::negate),
+        digit("0"),
+        key(".", KeyRole::Digit, |data: &mut Calculator| {
+            data.on_entered_digit(".");
+        }),
+        key("=", KeyRole::Primary, Calculator::on_equals),
+    ))
+    .columns(repeat_tracks(4, GridTrackSize::FRACTION))
+    .rows(repeat_tracks(5, GridTrackSize::FRACTION))
+    .gap(space::S)
+}
+
+fn app_logic(data: &mut Calculator) -> impl WidgetView<Calculator> + use<> {
+    flex_col((display(data).flex(1.), keypad(data).flex(2.5)))
+        .gap(space::M)
+        .padding(space::L)
 }
 
 pub(crate) fn run(event_loop: EventLoopBuilder) -> Result<(), EventLoopError> {
@@ -303,25 +406,31 @@ pub(crate) fn run(event_loop: EventLoopBuilder) -> Result<(), EventLoopError> {
         operation: None,
     };
 
-    // TODO - Find a more ergonomic way to express this in Xilem.
+    // Key states: no resting border, a light border on hover, a light overlay when pressed.
+    // TODO(xix): this belongs to a button role in the theme, not to the app.
     let mut default_properties = default_property_set();
     let mut stack = PropertyStack::new();
     stack.push(Selector::new(), BorderColor::new(Color::TRANSPARENT));
     stack.push(
         Selector::new().with_hovered(true),
-        BorderColor::new(Color::WHITE),
+        BorderColor::new(role::KEY_HOVER_BORDER),
+    );
+    stack.push(
+        Selector::new().with_active(true),
+        Background::Color(role::KEY_PRESSED),
     );
     default_properties.insert_stack::<masonry::widgets::Button>(stack);
 
-    let min_window_size = LogicalSize::new(200., 200.);
-    let window_size = LogicalSize::new(400., 500.);
+    let min_window_size = LogicalSize::new(240., 360.);
+    let window_size = LogicalSize::new(320., 480.);
     let window_options = WindowOptions::new("Calculator").with_min_inner_size(min_window_size);
     // On iOS, winit has unsensible handling of `inner_size`
     // See https://github.com/rust-windowing/winit/issues/2308 for more details
     #[cfg(not(target_os = "ios"))]
     let window_options = window_options.with_initial_inner_size(window_size);
     let app = Xilem::new_simple(data, app_logic, window_options)
-        .with_default_properties(default_properties);
+        .with_default_properties(default_properties)
+        .with_default_base_color(role::SURFACE);
     app.run_in(event_loop)?;
     Ok(())
 }

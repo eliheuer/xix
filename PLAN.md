@@ -668,6 +668,17 @@ Example roadmap, in order:
 3. **Placehero** stays as upstream's dogfooding app until the
    agentic programming tool replaces it.
 
+Progress: `calc` reworked 2026-08-22 (`screenshots/before/calc.png`
+versus `screenshots/calc.png`). What it forced: tokens as consts
+(space, radius, text, role), key roles with shared hover and pressed
+states, relational spacing (inset 20, section gap 12, key gap 8),
+`Dimensions::STRETCH` to fill grid cells, end-aligned display text,
+and one API trap: `label(..).color(..)` wraps the view in a `Prop`,
+after which `Label`'s own builders are gone, so builder order matters.
+Missing: tabular figures, and an event-injection path in the
+screenshot tool so a render can show a state other than the initial
+one.
+
 Rules while doing this: headless screenshots for review (no GUI
 launches while the user is active), one commit per example, and
 write what each example forced into the framework in a short note
