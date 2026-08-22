@@ -1,8 +1,10 @@
 # xix design: a UI framework for design engineers
 
-Status: proposal, 2026-08-21. Companion to [PLAN.md](PLAN.md), which
-holds the evidence. This document holds the architecture. Nothing
-here is final; it is the thing we argue with.
+Status: exploration, 2026-08-22. Companion to [PLAN.md](PLAN.md),
+which holds the evidence. This document holds one candidate
+architecture, written down so it can be argued with. No decision has
+been made. Every section, including the principles, is open to being
+rethought as the research continues.
 
 ## 1. Who it is for
 
