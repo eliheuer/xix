@@ -640,6 +640,40 @@ problem rather than the `State` parameter.
 
 ## 10. Next steps
 
+Decided 2026-08-22: fork now and learn from examples. Upstream
+imported at `ce7b04d2` with history; crate names unchanged so
+upstream merges stay cheap; stable toolchain pinned.
+
+Example roadmap, in order:
+
+1. **Upstream examples, made good.** Rework the existing Xilem
+   examples (`calc`, `stopwatch`, `to_do_mvc`, `emoji_picker`,
+   `http_cats`, `widgets`, `lists`, `scroll`, `flex`, `canvas`,
+   `transforms`, `multiple_windows`, `external_event_loop`, `mason`,
+   `state_machine`, `memoization`, `variable_clock`, `virtual_cats`,
+   `slider_demo`, `components`, `elm`) and the Masonry examples
+   (`calc_masonry`, `hello_masonry`, `to_do_list`, `custom_widget`,
+   `grid_masonry`, `layers`, `simple_image`, `split_playground`,
+   `virtual_fizzbuzz`, `gallery`) so each looks designed: spacing,
+   type, color, and structure as the kernel would produce them. This
+   is where the token and layout API gets found, by need, one
+   example at a time. Each reworked example is a before and after
+   screenshot pair.
+2. **Examples that show xix's strengths.** An SVG editor (canvas kit:
+   viewport, tools, hit testing, selection, undo), a basic ComfyUI-
+   style node editor (transform groups with real widgets inside,
+   wires, `understory_node_graph`), a simple paint program (retained
+   scene, damage regions, brush gestures), a pixel art editor (grid
+   canvas, palette, zoom, tool palette, a raw image island).
+3. **Placehero** stays as upstream's dogfooding app until the
+   agentic programming tool replaces it.
+
+Rules while doing this: headless screenshots for review (no GUI
+launches while the user is active), one commit per example, and
+write what each example forced into the framework in a short note
+at the top of the example file.
+
+
 1. Discuss and decide section 8. Record decisions here.
 2. Run the measurements in section 9 and record results here.
 3. Write `docs/problems.md` (public, polished version of sections 4
