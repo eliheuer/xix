@@ -679,6 +679,19 @@ Missing: tabular figures, and an event-injection path in the
 screenshot tool so a render can show a state other than the initial
 one.
 
+Browser demos (2026-08-22): `xilem` gained a `web` feature, a small
+driver that mounts an app into a `<canvas>`, feeds DOM pointer and
+keyboard events to a `RenderRoot`, rasterizes with Vello CPU, and
+blits with `putImageData`. No winit, no GPU, no atomics, stable
+Rust, 2.9 MB of wasm for calc. `masonry_winit` and tokio's
+multi-thread runtime are gated off on wasm32; `web_shim.rs` supplies
+`WindowId` and the event-loop type aliases so examples compile
+unchanged plus a 5-line `mount` export. `tools/web-build.sh` and
+`tools/web-test.sh` (headless Chrome with synthetic pointer events)
+close the loop. `calc` and a new `tokens` example (density, radius,
+hue sliders restyling a form through tokens) run inside the blog
+post through an Astro island (`XixDemo.astro`).
+
 Rules while doing this: headless screenshots for review (no GUI
 launches while the user is active), one commit per example, and
 write what each example forced into the framework in a short note
