@@ -37,7 +37,11 @@ These come first because every later choice is tested against them.
    color, ui-events, and Understory stay as dependencies. The fork
    covers the framework layers only (Masonry and the reactive
    layer). Geometry types are shared with the application's engine
-   (runebender-core already speaks kurbo).
+   (runebender-core already speaks kurbo). Rendering goes through
+   the `imaging` abstraction so the framework stays renderer
+   agnostic (Vello GPU, Vello Hybrid, Vello CPU, or another
+   backend), and the project is run so that outside contributors
+   can land changes, not as one application's internal toolkit.
 5. **Customizable by the user of the app.** Themes, keymaps, menus,
    and panel layouts are data, loadable at runtime, not constants
    compiled into the binary.
@@ -431,6 +435,25 @@ Whichever we choose, two rules hold for graphics apps:
   a drag in the canvas must not rebuild the sidebar. Measure it
   (section 9).
 
+**D. Fine-grained signals (Floem).** Floem (lapce/floem, MIT,
+used by the Lapce editor) builds the view tree once and updates it
+through `RwSignal`s and effects in the style of `leptos_reactive`.
+Only the views that read a changed signal update; nothing is
+re-generated per frame. It uses Taffy for layout and renders through
+Vello, vger, Skia, or tiny-skia, so it already proves a
+renderer-agnostic Linebender-adjacent stack is possible. Against
+principle 1: signals are runtime dependency tracking with interior
+mutability (`Rc`-like handles, effects scheduled by a runtime), so
+they are not zero cost and not statically checked, but they do not
+panic on reentrant borrows the way GPUI's entity model can. Against
+principle 3: signals fit the "nothing is rebuilt that did not
+change" rule naturally, which neither Xilem's diffing nor GPUI's
+re-render does. Worth taking: the stable view tree, fine-grained
+invalidation, and the ergonomics of reading state where it is used.
+Open question: whether the same invalidation precision can be had
+with static types, for example by deriving dependency sets at compile
+time from what a view reads, instead of a runtime tracker.
+
 Recommendation to discuss: B for the framework core, with a small,
 explicit, typed escape for local component state (so a text field
 can own its buffer without threading it through the app), and the
@@ -487,6 +510,36 @@ problem rather than the `State` parameter.
 5. Port runebender-xilem to xix as the first real test, tracking
    `PARITY.md` from runebender-gpui as the bar.
 
+## 11. Collected comments
+
+Comments from the public discussion of the 2026 review and related
+threads, kept here because they should guide the design. Add to this
+list as they come in. Paraphrased where the source is not quoted.
+
+- "The promise of Xilem to me was an architecture that wants to be
+  maximally adapted to Rust. Idiomatic, expressive, zero cost
+  abstractions, doesn't abandon the safety guarantees of the
+  language. I'd hope, if it has a future, it doesn't stray too far
+  from this vision." (Now principle 1.)
+- "Agree, these are the reason why I prefer Xilem's approach over
+  others. The closest one right now is probably GPUI but it's heavily
+  geared toward Zed and is not very contributors/renderer-agnostic
+  friendly so it's also not an option for me." (Two requirements:
+  renderer-agnostic through `imaging`, and a contribution process
+  that is not one company's editor. See principle 4 and 8.3.)
+- "I also really like the signal architecture that Floem uses, so
+  that maybe another source of inspiration for the new Xilem
+  redesign." (Now option D in 8.2.)
+- Lobsters, objectif_lune: building anything moderately complex on
+  Xilem and Masonry directly was "brutal"; praise for Qt's
+  signals/slots and for Slint separating UI declaration from logic.
+- Lobsters, krig: build for concrete applications with concrete
+  needs, or the framework grows complexity nobody asked for. (Now
+  principle 2.)
+- Lobsters, bitshift and replies: users accept GC-language overhead
+  when the API is simple and compiles fast; the real complaint about
+  Electron and GTK4 apps is memory, not speed.
+
 ## Sources
 
 - runebender-xilem: `context/*.md`, `ARCHITECTURE.md`, `LLMS.md`,
@@ -518,5 +571,6 @@ problem rather than the `State` parameter.
 - gpui-component: https://github.com/longbridge/gpui-component
 - awesome-gpui: https://github.com/zed-industries/awesome-gpui
 - Glass-HQ/gpui: https://github.com/Glass-HQ/gpui
+- Floem: https://github.com/lapce/floem
 - Raph Levien, Xilem: an architecture for UI in Rust (2022):
   https://raphlinus.github.io/rust/gui/2022/05/07/ui-architecture.html
