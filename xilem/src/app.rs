@@ -314,12 +314,24 @@ where
         let background = window_view.base_color.unwrap_or(self.default_base_color);
 
         let mut ctx = ViewCtx::new(Arc::new(NopProxy), self.runtime.clone());
-        let (InitialRootWidget(pod), _view_state) =
+        let (InitialRootWidget(pod), mut view_state) =
             window_view.masonry_root.build(&mut ctx, &mut self.state);
 
         let mut params = TestHarnessParams::default().with_size(size);
         params.background_color = background;
         let mut harness = TestHarness::create_with(default_properties, pod.new_widget, params);
+        // Run one rebuild so views that populate their scene in `rebuild`
+        // (e.g. the `canvas` view) are drawn.
+        {
+            use xilem_core::View as _;
+            window_view.masonry_root.rebuild(
+                &window_view.masonry_root,
+                &mut view_state,
+                &mut ctx,
+                harness.render_root_mut(),
+                &mut self.state,
+            );
+        }
         let image = harness.render();
         if let Some(parent) = path.parent() {
             let _ = std::fs::create_dir_all(parent);

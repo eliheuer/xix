@@ -976,6 +976,13 @@ impl<W: Widget> TestHarness<W> {
     /// Returns a [`WidgetMut`] to the root widget.
     ///
     /// Because of how `WidgetMut` works, it can only be passed to a user-provided callback.
+    /// Mutable access to the composition root, so a reactive layer can run a
+    /// rebuild pass against the harness (used by headless screenshotting of
+    /// views whose scene is populated in `rebuild`).
+    pub fn render_root_mut(&mut self) -> &mut RenderRoot {
+        &mut self.render_root
+    }
+
     pub fn edit_root_widget<R>(&mut self, f: impl FnOnce(WidgetMut<'_, W>) -> R) -> R {
         let ret = self.render_root.edit_base_layer(|mut root| {
             let root = root.downcast::<W>();
