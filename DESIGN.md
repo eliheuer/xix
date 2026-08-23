@@ -4,7 +4,7 @@ Status: exploration, 2026-08-22. Companion to [PLAN.md](PLAN.md),
 which holds the evidence. This document holds one candidate
 architecture, written down so it can be argued with. No decision has
 been made. Version 1 is in git history (commit `d963879`); section
-16 lists what changed and why.
+16 lists what changed and why; section 18 is the decisive review.
 
 ## 1. Who it is for, stated precisely
 
@@ -474,6 +474,129 @@ Each of these was hand-written in the port and belongs in the kernel:
 The token kernel and layout model (DESIGN.md 4, 5) held up well; the
 gap is entirely the canvas-island substrate and the document/view-state
 split above.
+
+## 18. Decisions after the Runebender port
+
+This section is the review. Sections 1 through 17 are the exploration;
+this is what building a real font editor on xix (28 slices, see
+`runebender-xix/PORT.md`) settled. Each decision states what the port
+proved and what the fork will do. These are firm unless a later
+prototype overturns them.
+
+### D1. The core primitive is the Scene Island, not the View
+
+The port built a grid, an editor, an icon button, and a preview strip.
+Every interactive one hand-rolled the same ~150 lines: a Masonry
+`Widget` (measure/layout/paint/pointer/text/accessibility/children), a
+Xilem `View` (build/rebuild/teardown/message), an event enum, and
+`Arc<Session>` reconciliation. That repetition is the loudest signal in
+the whole project. xix will provide a first-class `Island` where the
+app implements only:
+
+```rust
+trait Island {
+    type Msg;   // typed, out to the app
+    type Cmd;   // typed, in from the app
+    fn paint(&self, scene: &mut Scene, view: &Viewport, theme: &Theme);
+    fn gesture(&mut self, g: Gesture, view: &Viewport) -> Vec<Self::Msg>;
+    fn command(&mut self, cmd: Self::Cmd) -> Vec<Self::Msg>;
+}
+```
+
+The framework provides the Widget and View wiring, the viewport, the
+gesture recognizer, damage-based repaint, and the message/command
+channels. Display-only islands (the preview strip) can already use the
+built-in `canvas` view with no boilerplate; the `Island` trait extends
+that ease to interactive ones.
+
+### D2. Split the document from view state
+
+The hardest bug of the port: the editor island owned the edit session,
+edited its own clone, and emitted only events, so the app saved a stale
+glyph and panels could not edit points. The resolution is now a
+decision. The document (the font, the edit session) lives in app state;
+the island holds only ephemeral view state (viewport, active gesture,
+pen buffer, hover). Edits are typed commands the island issues against
+the document, applied by the app, so the canvas and the panels act on
+one source of truth. This is neither "island owns everything" (awkward
+for panels, the bug we hit) nor "app re-renders everything on every
+keystroke" (GPUI, which needs a runtime-borrow entity graph we rejected
+in principle 1).
+
+### D3. Repaint by ticks, not by re-running views
+
+D2 only works if reacting to a document change is cheap. Repaint is
+driven by tick-based change detection (the Bevy mechanism, DESIGN.md
+12): a document or view-state change bumps a tick, the affected island
+rebuilds its scene, and only its damage rect repaints. This gives
+GPUI's shared-state ergonomics without GPUI's full re-render or its
+runtime borrows. This is the mechanism that makes the static model
+competitive; it matters far more than the choice of reactive layer.
+
+### D4. The reactive layer is thin, static, and last
+
+Confirmed by the whole port: the reactive layer was nearly invisible.
+The work was widgets, painting, gestures, and document plumbing. xix
+keeps the reactive layer minimal and static (one `View<S>` generic,
+explicit messages, no lens tower, `ViewSequence` folded into `View`,
+per DESIGN.md 10) and treats it as replaceable. It is not the fork's
+identity and it is chosen last. The identity is D1 through D3.
+
+### D5. A window-level action / keymap / menu layer is required framework
+
+The most-hit gap across 28 slices. Masonry routes keys only to the
+focused widget, so the port put flip/rotate/boolean/decompose on
+unmodified keys and needed a Save button, because there is nowhere to
+hang a real Cmd+S or a menu. xix will build a window-level action
+layer: actions as plain structs, a keymap as data, dispatch down the
+focus chain, one action list feeding both the keymap and the menu bar
+(native via `muda` where the platform has one, in-window via Masonry
+layers plus `understory_overlay` elsewhere). This is DESIGN.md 9,
+promoted from plan to decision.
+
+### D6. Ship the small primitives the port hand-wrote
+
+Each of these was written by hand in `runebender-xix` and belongs in
+the kernel or canvas kit:
+
+- Cross-axis Fill for flex (full-height columns needed `sized_box` +
+  `Dim::Stretch` with the background on the box, not the content).
+- Icon / vector-path button (Masonry's `svg` view takes an SVG string,
+  not a kurbo path).
+- Text into a scene (`text_label.rs`: shape a label into a canvas
+  scene; every island needs it).
+- A gesture recognizer (click vs drag, thresholds, modifiers,
+  drag-from-origin), rewritten in every island.
+- A number field bound to a value with drag-to-scrub and
+  commit-on-Enter (the port hand-managed input buffers to avoid
+  clobbering typing, because there is no focus-aware bound field).
+
+### D7. The agent loop is a product surface, and headless must rebuild
+
+The entire port was driven and verified through headless screenshots;
+that workflow is the design engineer's and the agent's primary lens, so
+it is a product surface, not a test utility (principle 10, confirmed).
+One concrete fix already landed: the headless renderer must run a
+`rebuild` pass, or views that populate their scene in `rebuild` (the
+`canvas` view) render blank. `TestHarness::render_root_mut` plus a
+rebuild in the screenshot path fixed it.
+
+### D8. What held up unchanged
+
+The token/design kernel (tokens as enums, OKLCH roles, relational
+spacing) and the Figma-style layout model (stacks, inset, hug/fill/
+fixed) caused no friction wherever used. They stay as specified in
+DESIGN.md 4 and 5. All the trouble was in the canvas-island substrate
+and the document/view-state split, which is exactly where the fork's
+real work is.
+
+### The one-sentence conclusion
+
+xix is not a reactive-architecture bet; it is a Scene Island substrate
+with a document/view-state discipline and a window-level action layer,
+on the Linebender stack, and the reactive layer is a thin static
+convenience on top. The port turned that from a hypothesis into a
+decision.
 
 ## 16. What changed from version 1, and why
 
