@@ -489,6 +489,28 @@ jobs:
         env:
           RUSTDOCFLAGS: '--cfg docsrs -D warnings'
 
+  cargo-vet:
+    name: cargo vet (supply chain)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install Rust ${{ env.RUST_STABLE_VER }}
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master
+        with:
+          toolchain: ${{ env.RUST_STABLE_VER }}
+
+      - name: Install cargo-vet
+        uses: taiki-e/install-action@6cd13508893c0e7eab5f273c2575d3859bd7229a # v2
+        with:
+          tool: cargo-vet
+
+      # Fails if any dependency (build-script crates included) is neither
+      # covered by an imported trusted audit nor listed as an exemption.
+      - name: Run cargo vet
+        run: cargo vet --locked
+
   # If this fails, consider changing your text or adding something to .typos.toml.
   typos:
     runs-on: ubuntu-latest
