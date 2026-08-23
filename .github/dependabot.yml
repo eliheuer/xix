@@ -1,0 +1,19 @@
+# Keep the SHA-pinned GitHub Actions current. Actions are pinned to full
+# commit SHAs in the workflows (supply-chain hardening); Dependabot bumps the
+# SHA and its version comment when a new release lands, so pinning does not
+# mean going stale.
+#
+# Cargo dependencies are deliberately NOT managed here: they follow the
+# 7-day publish-age cooldown (.cargo/config.toml) and are refreshed manually
+# with `cargo +nightly -Zmin-publish-age update`, so Dependabot is not allowed
+# to pull brand-new crate releases straight in.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns:
+          - "*"
