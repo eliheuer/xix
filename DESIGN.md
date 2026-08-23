@@ -478,10 +478,13 @@ split above.
 ## 18. Decisions after the Runebender port
 
 This section is the review. Sections 1 through 17 are the exploration;
-this is what building a real font editor on xix (28 slices, see
-`runebender-xix/PORT.md`) settled. Each decision states what the port
+this is what building a real font editor on xix (57 slices and counting,
+see `runebender-xix/PORT.md`) settled. Each decision states what the port
 proved and what the fork will do. These are firm unless a later
-prototype overturns them.
+prototype overturns them. D1 through D8 came out of the first pass;
+D9 records what the second pass (real interpolation and a push to match
+the GPUI editor's visual quality) added, because chasing that quality is
+where the design-engineer DX gaps showed up most clearly.
 
 ### D1. The core primitive is the Scene Island, not the View
 
@@ -569,7 +572,25 @@ the kernel or canvas kit:
   drag-from-origin), rewritten in every island.
 - A number field bound to a value with drag-to-scrub and
   commit-on-Enter (the port hand-managed input buffers to avoid
-  clobbering typing, because there is no focus-aware bound field).
+  clobbering typing, because there is no focus-aware bound field). The
+  second pass reinforced this: the Width/LSB/RSB row needed three
+  hand-managed buffers with cross-field refresh, since editing one
+  sidebearing changes the others.
+- A collection / grid view. The glyph grid (`grid.rs`) is a whole
+  hand-written widget: span packing, scroll math, per-cell hit routing,
+  and cell sizing. A framework grid that takes items plus a per-item
+  paint closure plus a selection model would delete it, and it is the
+  same primitive a node canvas, an asset browser, and a timeline all
+  need. This is the highest-value missing primitive for graphics apps.
+- A flat, selectable list-row (label left, value right, selected
+  highlight). The sidebar's Categories/Languages/Filters rows are
+  hand-assembled from `button(child)` plus `FlexSpacer` inside a
+  `sized_box(Dim::Stretch)`, because there is no styled list-row.
+- A color swatch / chip. Marks render as rounded squares because there
+  is no rounded or circular swatch view; the bottom bar and the Mark
+  panel both want one.
+- A collapsible section header (a disclosure caret plus a label),
+  hand-made as `label("▾ …")` in both the sidebar and the right panel.
 
 ### D7. The agent loop is a product surface, and headless must rebuild
 
@@ -589,6 +610,51 @@ fixed) caused no friction wherever used. They stay as specified in
 DESIGN.md 4 and 5. All the trouble was in the canvas-island substrate
 and the document/view-state split, which is exactly where the fork's
 real work is.
+
+### D9. What matching the GPUI editor's quality taught (second pass)
+
+The second pass had two goals: real variable-font interpolation, and
+closing the visual-quality gap with the GPUI version of Runebender so
+that a design engineer would reach for xix on look alone. Pushing on
+quality, not features, is what surfaced the DX gaps below. The rule that
+paid off: treat every "the GPUI version just looks better here" as a
+missing primitive, not an app problem.
+
+- Theme lives in app state, not in a framework context. The palette is
+  an `Arc<Palette>` the app threads into every view by hand, and a theme
+  switch has to rebuild the baked cell colors itself. The framework
+  should own a theme context that widgets read, so swapping one token id
+  reskins the tree with no manual plumbing. The token/OKLCH kernel (D8)
+  is right; what is missing is the delivery path from token to widget.
+
+- Derived view-state has no home, so it is hand-wired. The
+  interpolation preview is a value computed from the document (the axis
+  location) that drives a read-only overlay. The port recomputes it on
+  every rebuild and threads it into the island by hand. The Island plus
+  document/view-state model (D1, D2) should own this "document changes,
+  a derived value is recomputed, the island repaints" loop, the same way
+  a background layer, a reference glyph, or a measurement readout would
+  want it.
+
+- Read-only is a real view mode the framework should name. Off a master
+  the editor shows the interpolated instance read-only: edits are
+  swallowed and the editing affordances (points, handles, anchors) are
+  hidden. The port gates this by hand in both `paint` and every event
+  handler. A first-class read-only document view would carry that once.
+
+- Visual defaults decide whether it looks professional. Two one-line
+  changes closed most of the perceived gap: filling grid glyphs with
+  their mark color instead of flat gray, and softening the cell corner
+  radius. The lesson for the design kernel is that the roles must ship
+  with defaults good enough that the untouched app already looks like
+  the GPUI version, because the design engineer will judge on the
+  default, not on what is tunable.
+
+- Headless screenshots carried the whole second pass. Every visual
+  decision here was made by rendering a PNG and looking, never by
+  running the GUI. This is more evidence for D7: the headless renderer
+  is the design engineer's and the agent's primary lens and a first
+  product surface, not a test utility.
 
 ### The one-sentence conclusion
 
