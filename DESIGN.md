@@ -372,6 +372,109 @@ independent sub-states, `Edit<T>`/`Read<T>` (upstream, merged
   for the same Masonry tree, not a DOM backend.
 - Not general-purpose. Dense, designed, professional tools.
 
+## 17. What the Runebender port is teaching us (the canvas-island problem)
+
+This section is written from porting Runebender to xix slice by slice
+(see `runebender-xix/PORT.md`). The frictions cluster into one central
+finding that should shape the fork.
+
+### The pattern every graphics app needs, and the boilerplate it costs
+
+A font editor is a shell of widgets around a few **retained canvas
+islands**: the glyph grid, the glyph editor, later a kerning view and a
+node graph. Each island owns its own session and gesture state, paints a
+scene, and talks to the rest of the app. In xix today, each island costs
+about 150 lines of identical scaffolding before any real content:
+
+- a Masonry `Widget` impl (measure, layout, paint, `on_pointer_event`,
+  `on_text_event`, accessibility, `children_ids`),
+- a Xilem `View` impl (build, rebuild, teardown, message),
+- an event enum and `submit_action` plumbing,
+- an `Arc<Session>` that is cloned into the widget on build and
+  reconciled on rebuild (keep the viewport, replace the session).
+
+The grid, the editor, and even the icon button each re-implement this.
+That is the clearest signal in the whole port: **the retained canvas
+island must be a first-class framework primitive, not hand-rolled per
+app.** Proposed shape for the xix canvas kit (DESIGN.md 6):
+
+```rust
+// You implement only this; the kit provides the Widget + View wiring,
+// the viewport, the gesture recognizer, and the message channel.
+trait Island {
+    type Msg;                 // typed messages out
+    type Cmd;                 // typed commands in
+    fn paint(&self, scene: &mut Scene, view: &Viewport, theme: &Theme);
+    fn gesture(&mut self, g: Gesture, view: &Viewport) -> Vec<Self::Msg>;
+    fn command(&mut self, cmd: Self::Cmd) -> Vec<Self::Msg>;
+}
+```
+
+### The island/state-ownership dilemma
+
+The single hardest question the port raised: **who owns the editable
+document, the island or the app?**
+
+- If the **island owns it** (what xix does now), painting and gestures
+  are trivial and fast, but the app cannot read edits without pulling
+  the session back out, and the app cannot *drive* edits (a panel field
+  that changes a point) without a command channel in. We hit the
+  concrete bug: the island edited its own clone, emitted only events,
+  and the app saved a stale glyph. The fix pulls the session back
+  through the element on every message, which round-trips the whole
+  session widget -> app -> widget per edit.
+- If the **app owns it** (what GPUI does: one `Entity`, panel and
+  canvas share it), panel-to-canvas editing is free, but every
+  keystroke re-runs the whole render and the framework must make that
+  cheap (GPUI does, at the cost of the runtime-borrow-checked entity
+  model we rejected in principle 1).
+
+This is the core tension between our static, message-passing model and
+GPUI's shared-mutable-entity model, made concrete. The resolution xix
+should adopt:
+
+1. The document (the norad font, the edit session) lives in **app
+   state**, not in the island. The island borrows it to paint and
+   holds only *ephemeral* state: the viewport, the in-progress gesture,
+   the active pen buffer, hover.
+2. Edits are **typed commands** the island issues against the document
+   (nudge, drag-to, cut, add-contour), applied by the app, so both the
+   canvas and the panels act on one source of truth.
+3. Repaint is driven by **tick-based change detection** (DESIGN.md 12),
+   not by re-running the view: when the document or the island's
+   ephemeral state changes, only the island's scene is rebuilt, and
+   only its damage rect repaints. This gives GPUI's shared-state
+   ergonomics without GPUI's full re-render or its runtime borrow
+   checks.
+
+In other words, the canvas kit should split **document (app-owned,
+command-edited) from view state (island-owned, ephemeral)**, which is
+neither "island owns everything" (today's xix, awkward for panels) nor
+"app re-renders everything" (GPUI, needs a cheap full render). This is
+the most important architectural decision the port surfaced, and it is
+the thing to prototype next.
+
+### Smaller primitives the port proved are missing
+
+Each of these was hand-written in the port and belongs in the kernel:
+
+- **Cross-axis Fill** for flex (full-height panel columns need
+  `sized_box` + `Dim::Stretch` today, with the background on the box).
+- **Icon button** that paints a vector (kurbo) path, not only an SVG
+  string.
+- **Text into a scene**: shaping a label into a canvas scene
+  (`text_label.rs`) is needed by every island (grid labels, measure
+  labels, HUDs) and has no one-liner.
+- **A gesture recognizer** (click vs drag, thresholds, modifiers,
+  drag-from-origin) rewritten in every island's `on_pointer_event`.
+- **Window-level actions/keymaps/menus**: editing keys only reach the
+  focused island, so cross-cutting shortcuts (save, tool switch,
+  ops) have no home yet. This is the standing gap from PLAN.md.
+
+The token kernel and layout model (DESIGN.md 4, 5) held up well; the
+gap is entirely the canvas-island substrate and the document/view-state
+split above.
+
 ## 16. What changed from version 1, and why
 
 - **Three actors instead of one.** Version 1 described the design
