@@ -66,6 +66,14 @@ env:
 
 name: CI
 
+# Supply-chain hardening: every job below only compiles, tests, lints, or
+# builds docs, and all of those run dependency build scripts. None of them
+# need to touch the GitHub API, so the workflow's GITHUB_TOKEN is stripped of
+# every scope at the top level. A job that ever needs a permission must opt
+# in with its own `permissions:` block, keeping the token useless to a
+# compromised build script or proc-macro in the meantime.
+permissions: {}
+
 on:
   pull_request:
   merge_group:
