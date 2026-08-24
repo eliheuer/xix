@@ -784,11 +784,30 @@ a boxed collection (which also removes the sixteen-child cap), and the
 style methods stay available on the erased view type, so a helper's
 return type is nameable.
 
-One honest counterweight: part of the GPUI advantage is
-`gpui_component`, a styled parts library with inputs, sliders, and
-resizable panels already built. That is section 6's work, and no API
-change substitutes for it. But the five properties above are what make
-that library cheap to write and cheap to use, and they come first.
+A counterweight, measured rather than assumed. The obvious objection is
+that GPUI wins because `gpui_component` exists, a third-party styled
+parts library (Longbridge, not Zed). So I counted what the port
+actually imports from it: four things. Text input, slider, one
+resizable split, and the native menu bar. Everything else in that
+13,809-line file, every row, cell, chip, tab, panel, toolbar, and
+sidebar, is hand-composed from `div()`, 175 times.
+
+That reverses the conclusion. The parts library is not the advantage.
+The container plus the scale is the advantage, and the library covers
+exactly the four parts that are genuinely hard to write: text editing
+with IME and selection, a drag control, a resizable split, and a
+platform menu. Xilem already has the first three. The fourth is D6's
+menu problem, already decided.
+
+So xix does not need a forty-component library before it is usable, and
+building one first would be building the cheap half. The order is:
+the styled container and the kernel scale (findings 1 and 2), then the
+four hard parts, then a thin recipe layer that names the compositions
+an application repeats (list row, field, section, toolbar, panel) and
+that an app can bypass with the container whenever it wants something
+else. Recipes graduate from an app into the framework when the second
+proving application needs the same one, not before. Runebender's
+`ui.rs` is the first candidate set.
 
 The test from section 2 should be read against this: an agent given
 only the framework and a one-paragraph brief produces a screen a
