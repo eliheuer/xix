@@ -17,9 +17,9 @@ construction.
 
 ## What is different so far
 
-`xilem::kernel` is the design kernel: `Space`, `ControlSize`, `Stroke`,
-`Radius`, and `TextSize`, a closed vocabulary that the styling APIs
-take in place of a number.
+**A design kernel.** `xilem::kernel` is a closed vocabulary the styling
+APIs take in place of a number: `Space`, `ControlSize`, `Stroke`,
+`Radius`, and `TextSize`.
 
 ```rust
 flex_row(children).gap(Space::Md).padding(Space::Lg)
@@ -32,6 +32,17 @@ produced twenty distinct spacing values and four text sizes, because
 every sizing API takes a free `f64`. The same editor ported to GPUI did
 not drift, because GPUI's vocabulary is a closed scale you cannot land
 between. See DESIGN.md D11.
+
+**A theme is data.** `masonry::theme::Theme` holds the role colors and
+the kernel steps that every built-in widget styles itself from, so an
+application states its theme once and the whole widget set follows.
+`default_property_set()` is now `Theme::dark().property_set()`.
+
+**A canvas island.** `island` is a retained, pannable, zoomable surface
+that owns the viewport and reports gestures already converted into
+document coordinates. It is the primitive under a glyph canvas, a node
+graph, a timeline, and a map, and it is the code both Runebender ports
+rewrote per canvas.
 
 ## Build
 
@@ -47,6 +58,7 @@ Three examples are worth reading first:
 | `app_shell` | A whole desktop screen (sidebar, content, inspector, status bar) with the kernel and no loose numbers |
 | `shapes` | A small graphics editor on `island`: draw, select, drag, pan, zoom, with no viewport math in the file |
 | `tokens` | Density, roundness, and hue as sliders: the same tokens, resolved by a theme, restyle a working panel |
+| `widgets` | Every control on one screen at three densities: a coherence test, not a catalog |
 | `canvas` | A plain retained drawing surface, without the island's gestures |
 
 Add `XIX_SCREENSHOT=out.png` and the `screenshot` feature to render any
