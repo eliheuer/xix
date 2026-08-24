@@ -66,8 +66,8 @@ impl<State, Action> Prose<State, Action> {
 
     /// Set the font size of the text.
     #[doc(alias = "font_size")]
-    pub fn text_size(mut self, text_size: f32) -> Self {
-        self.text_size = text_size;
+    pub fn text_size(mut self, text_size: impl Into<f32>) -> Self {
+        self.text_size = text_size.into();
         self
     }
 

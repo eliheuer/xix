@@ -1,157 +1,447 @@
-// Copyright 2024 the Xilem Authors
+// Copyright 2026 the Xilem Authors
 // SPDX-License-Identifier: Apache-2.0
 
-//! A widget gallery for xilem/masonry
+//! Every control, on one rhythm, at three densities.
+//!
+//! A gallery is usually a catalog: here is a button, here is a checkbox.
+//! This one is a test. All of the controls are on screen together, sized
+//! from [`xilem::kernel`] and resolved by a theme, and the density switch
+//! at the top restyles the whole set at once.
+//!
+//! That combination is the thing to look at. A catalog tells you a widget
+//! exists. A gallery where everything is visible at the same time, on the
+//! same scale, tells you whether the set is coherent: whether a button and
+//! a text field are the same height, whether a switch and a checkbox sit
+//! on the same baseline, whether a row of mixed controls lines up. Those
+//! are the defects that make an application look homemade, and they are
+//! invisible one widget at a time.
+//!
+//! What it catches, today, in one look: the application's accent is green
+//! and every built-in control is blue, because the widget defaults come
+//! from a hardcoded property set rather than from the theme. The built-in
+//! controls also set their own text size, so their labels are larger than
+//! the application's body text sitting next to them. Both are the same
+//! defect, and it is the next thing to fix (DESIGN.md D14).
+//!
+//! It is also the fastest visual review surface in the repo. Render it
+//! headlessly and look at the PNG:
+//!
+//! ```sh
+//! XIX_SCREENSHOT=widgets.png cargo run -p xilem --features screenshot --example widgets
+//! ```
 
-use masonry::dpi::LogicalSize;
-use masonry::layout::{AsUnit, Length};
-use masonry_winit::app::{EventLoop, EventLoopBuilder};
+use masonry::kernel::{ControlSize, Radius, Space, TextSize};
+use masonry::layout::{Dim, Length};
+use masonry::properties::Dimensions;
+use masonry::properties::types::CrossAxisAlignment;
+use masonry::theme::default_property_set;
+use winit::dpi::LogicalSize;
 use winit::error::EventLoopError;
-use xilem::style::Style as _;
+use xilem::style::Style;
 use xilem::view::{
-    FlexSpacer, MainAxisAlignment, checkbox, collapse_panel, flex_col, flex_row, indexed_stack,
-    label, progress_bar, sized_box, text_button,
+    FlexExt as _, FlexSpacer, button, checkbox, flex_col, flex_row, label, progress_bar, prose,
+    radio_button, radio_group, sized_box, slider, spinner, switch, text_input,
 };
-use xilem::{Color, WidgetView, WindowOptions, Xilem};
-use xilem_core::lens;
+use xilem::{Color, EventLoop, EventLoopBuilder, WidgetView, WindowOptions, Xilem};
 
-const SPACER_WIDTH: Length = Length::const_px(10.);
+// ---------------------------------------------------------------- theme
 
-/// The state of the entire application.
-///
-/// This is owned by Xilem, used to construct the view tree, and updated by event handlers.
-struct WidgetGallery {
-    tab: GalleryTab,
-    progress: Option<f64>,
+#[derive(Clone, Copy)]
+enum Role {
+    App,
+    Panel,
+    Field,
+    Text,
+    Muted,
+    Accent,
+}
+
+/// The three densities a desktop application actually ships.
+#[derive(Clone, Copy, PartialEq)]
+enum Density {
+    Compact,
+    Cozy,
+    Comfortable,
+}
+
+impl Density {
+    const ALL: [(Self, &'static str); 3] = [
+        (Self::Compact, "Compact"),
+        (Self::Cozy, "Cozy"),
+        (Self::Comfortable, "Comfortable"),
+    ];
+
+    /// How far spacing stretches.
+    fn space_scale(self) -> f64 {
+        match self {
+            Self::Compact => 0.75,
+            Self::Cozy => 1.0,
+            Self::Comfortable => 1.5,
+        }
+    }
+
+    /// How far control heights stretch. Less than spacing, on purpose: a
+    /// hit target that follows spacing all the way down stops being one.
+    fn size_scale(self) -> f64 {
+        match self {
+            Self::Compact => 0.9,
+            Self::Cozy => 1.0,
+            Self::Comfortable => 1.2,
+        }
+    }
+}
+
+struct Theme {
+    density: Density,
+}
+
+impl Theme {
+    fn space(&self, space: Space) -> Length {
+        Length::px(space.px() * self.density.space_scale())
+    }
+
+    fn size(&self, size: ControlSize) -> Length {
+        let scaled = size.px() * self.density.size_scale();
+        // The floor a text control needs. It belongs in the widget, not
+        // here: see DESIGN.md D13.
+        Length::px(scaled.max(f64::from(TextSize::Body.px()) * 2.3))
+    }
+
+    fn color(&self, role: Role) -> Color {
+        use masonry::peniko::color::{AlphaColor, Oklch, Srgb};
+        let oklch =
+            |l: f32, c: f32, h: f32| AlphaColor::<Oklch>::new([l, c, h, 1.0]).convert::<Srgb>();
+        match role {
+            Role::App => oklch(0.17, 0.005, 260.0),
+            Role::Panel => oklch(0.21, 0.006, 260.0),
+            Role::Field => oklch(0.26, 0.008, 260.0),
+            Role::Text => oklch(0.94, 0.004, 260.0),
+            Role::Muted => oklch(0.68, 0.012, 260.0),
+            Role::Accent => oklch(0.78, 0.150, 155.0),
+        }
+    }
+}
+
+// ---------------------------------------------------------------- state
+
+struct Gallery {
+    theme: Theme,
+    text: String,
     checked: bool,
-    collapsed: bool,
+    switched: bool,
+    choice: usize,
+    amount: f64,
+    progress: f64,
 }
 
-#[repr(usize)]
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum GalleryTab {
-    Progress = 0,
-    Checkbox,
-    CollapsePanel,
-}
+const CHOICES: [&str; 3] = ["Left", "Center", "Right"];
 
-fn progress_bar_view(data: Option<f64>) -> impl WidgetView<Option<f64>> {
-    flex_col((
-        progress_bar(data),
-        checkbox(
-            "set indeterminate progress",
-            data.is_none(),
-            |state: &mut Option<f64>, checked| {
-                if checked {
-                    *state = None;
-                } else {
-                    *state = Some(0.5);
-                }
-            },
-        ),
-        text_button("change progress", |state: &mut Option<f64>| match state {
-            Some(v) => *v = (*v + 0.1).rem_euclid(1.),
-            None => *state = Some(0.5),
-        }),
-    ))
-}
+// ---------------------------------------------------------------- parts
 
-fn checkbox_view(data: bool) -> impl WidgetView<bool> {
-    checkbox("a simple checkbox", data, |data: &mut bool, new_state| {
-        *data = new_state;
-    })
-}
-
-fn collapse_panel_view(_data: bool) -> impl WidgetView<bool> {
-    // TODO: Actually use data when CollapsePanel gets action support for collapse changes
-    collapse_panel(
-        label("Click the arrow to expand"),
-        label("Here's the secret message"),
-    )
-}
-
-/// Wrap `inner` in a box with a border
-fn border_box<State: 'static, Action: 'static>(
-    inner: impl WidgetView<State, Action>,
-) -> impl WidgetView<State, Action> {
+/// A labeled slot in the gallery: the name on the left, the control on
+/// the right, both centered on one row.
+fn slot<V: WidgetView<Gallery> + 'static>(
+    t: &Theme,
+    name: &'static str,
+    control: V,
+) -> impl WidgetView<Gallery> + use<V> {
     flex_row((
-        FlexSpacer::Flex(1.),
-        flex_col((FlexSpacer::Flex(1.), inner, FlexSpacer::Flex(1.))),
-        FlexSpacer::Flex(1.),
+        sized_box(
+            label(name)
+                .text_size(TextSize::Body)
+                .color(t.color(Role::Muted)),
+        )
+        .dims(Dimensions::new(
+            Dim::Fixed(Length::px(104.0)),
+            Dim::Fixed(t.size(ControlSize::Row)),
+        )),
+        control,
     ))
-    .dims((450.px(), 200.px()))
-    .border(Color::WHITE, 2.px())
+    .cross_axis_alignment(CrossAxisAlignment::Center)
+    .gap(t.space(Space::Md))
 }
 
-/// Top-level view
-fn app_logic(data: &mut WidgetGallery) -> impl WidgetView<WidgetGallery> + use<> {
-    // Use a `sized_box` to pad the window contents
+fn section<V: WidgetView<Gallery> + 'static>(
+    t: &Theme,
+    title: &'static str,
+    body: V,
+) -> impl WidgetView<Gallery> + use<V> {
+    flex_col((
+        label(title)
+            .text_size(TextSize::Caption)
+            .color(t.color(Role::Muted)),
+        body,
+    ))
+    .cross_axis_alignment(CrossAxisAlignment::Start)
+    .gap(t.space(Space::Md))
+}
+
+/// A push button at control height, primary or not.
+fn push(t: &Theme, text: &'static str, primary: bool) -> impl WidgetView<Gallery> + use<> {
+    let (bg, fg) = if primary {
+        (t.color(Role::Accent), t.color(Role::App))
+    } else {
+        (t.color(Role::Field), t.color(Role::Text))
+    };
     sized_box(
-        flex_col((
-            flex_row((
-                text_button("Progress", |data: &mut WidgetGallery| {
-                    data.tab = GalleryTab::Progress;
-                })
-                .disabled(data.tab == GalleryTab::Progress),
-                text_button("Checkbox", |data: &mut WidgetGallery| {
-                    data.tab = GalleryTab::Checkbox;
-                })
-                .disabled(data.tab == GalleryTab::Checkbox),
-                text_button("CollapsePanel", |data: &mut WidgetGallery| {
-                    data.tab = GalleryTab::CollapsePanel;
-                })
-                .disabled(data.tab == GalleryTab::CollapsePanel),
-            ))
-            .main_axis_alignment(MainAxisAlignment::Center),
-            indexed_stack((
-                lens(
-                    |progress: &mut Option<f64>| border_box(progress_bar_view(*progress)),
-                    |data: &mut WidgetGallery| &mut data.progress,
-                ),
-                lens(
-                    |checked: &mut bool| border_box(checkbox_view(*checked)),
-                    |data: &mut WidgetGallery| &mut data.checked,
-                ),
-                lens(
-                    |collapsed: &mut bool| border_box(collapse_panel_view(*collapsed)),
-                    |data: &mut WidgetGallery| &mut data.collapsed,
-                ),
-            ))
-            .active(data.tab as usize),
-        ))
-        .gap(SPACER_WIDTH),
+        button(
+            label(text).text_size(TextSize::Body).color(fg),
+            |_: &mut Gallery| {},
+        )
+        .background_color(bg)
+        .corner_radius(Radius::Md),
     )
-    .padding(SPACER_WIDTH)
+    .dims(Dimensions::new(
+        Dim::Auto,
+        Dim::Fixed(t.size(ControlSize::Control)),
+    ))
+}
+
+/// The density switch: three chips, the current one filled.
+fn density_switch(t: &Theme) -> impl WidgetView<Gallery> + use<> {
+    let chips: Vec<_> = Density::ALL
+        .iter()
+        .map(|(density, name)| {
+            let density = *density;
+            let active = density == t.density;
+            let (bg, fg) = if active {
+                (t.color(Role::Accent), t.color(Role::App))
+            } else {
+                (t.color(Role::Field), t.color(Role::Text))
+            };
+            sized_box(
+                button(
+                    label(*name).text_size(TextSize::Body).color(fg),
+                    move |gallery: &mut Gallery| gallery.theme.density = density,
+                )
+                .background_color(bg)
+                .corner_radius(Radius::Md),
+            )
+            .dims(Dimensions::new(
+                Dim::Auto,
+                Dim::Fixed(t.size(ControlSize::Control)),
+            ))
+        })
+        .collect();
+    flex_row(chips)
+        .cross_axis_alignment(CrossAxisAlignment::Center)
+        .gap(t.space(Space::Sm))
+}
+
+// -------------------------------------------------------------- gallery
+
+fn text_section(gallery: &Gallery) -> impl WidgetView<Gallery> + use<> {
+    let t = &gallery.theme;
+    section(
+        t,
+        "Text",
+        flex_col((
+            slot(
+                t,
+                "Title",
+                label("Widget gallery")
+                    .text_size(TextSize::Title)
+                    .color(t.color(Role::Text)),
+            ),
+            slot(
+                t,
+                "Body",
+                label("The quick brown fox")
+                    .text_size(TextSize::Body)
+                    .color(t.color(Role::Text)),
+            ),
+            slot(
+                t,
+                "Caption",
+                label("12 items, 3 selected")
+                    .text_size(TextSize::Caption)
+                    .color(t.color(Role::Muted)),
+            ),
+            slot(
+                t,
+                "Prose",
+                prose("Prose wraps at the width it is given, and is selectable.")
+                    .text_size(TextSize::Body)
+                    .text_color(t.color(Role::Text)),
+            ),
+        ))
+        .cross_axis_alignment(CrossAxisAlignment::Start)
+        .gap(t.space(Space::Sm)),
+    )
+}
+
+fn input_section(gallery: &Gallery) -> impl WidgetView<Gallery> + use<> {
+    let t = &gallery.theme;
+    section(
+        t,
+        "Input",
+        flex_col((
+            slot(
+                t,
+                "Text field",
+                sized_box(
+                    text_input(gallery.text.clone(), |gallery: &mut Gallery, v| {
+                        gallery.text = v;
+                    })
+                    .background_color(t.color(Role::Field))
+                    .corner_radius(Radius::Sm),
+                )
+                .dims(Dimensions::new(
+                    Dim::Fixed(Length::px(220.0)),
+                    Dim::Fixed(t.size(ControlSize::Control)),
+                )),
+            ),
+            slot(
+                t,
+                "Slider",
+                slider(0.0, 1.0, gallery.amount, |gallery: &mut Gallery, v| {
+                    gallery.amount = v;
+                })
+                .width(Length::px(220.0)),
+            ),
+            slot(
+                t,
+                "Buttons",
+                flex_row((push(t, "Cancel", false), push(t, "Save", true)))
+                    .cross_axis_alignment(CrossAxisAlignment::Center)
+                    .gap(t.space(Space::Sm)),
+            ),
+        ))
+        .cross_axis_alignment(CrossAxisAlignment::Start)
+        .gap(t.space(Space::Sm)),
+    )
+}
+
+fn choice_section(gallery: &Gallery) -> impl WidgetView<Gallery> + use<> {
+    let t = &gallery.theme;
+    let radios: Vec<_> = CHOICES
+        .iter()
+        .enumerate()
+        .map(|(i, name)| {
+            radio_button(*name, gallery.choice == i, move |gallery: &mut Gallery| {
+                gallery.choice = i;
+            })
+        })
+        .collect();
+    section(
+        t,
+        "Choice",
+        flex_col((
+            slot(
+                t,
+                "Checkbox",
+                checkbox("Show hidden items", gallery.checked, |gallery: &mut Gallery, on| {
+                    gallery.checked = on;
+                }),
+            ),
+            slot(
+                t,
+                "Switch",
+                switch(gallery.switched, |gallery: &mut Gallery, on| {
+                    gallery.switched = on;
+                }),
+            ),
+            slot(
+                t,
+                "Radio",
+                radio_group(
+                    flex_row(radios)
+                        .cross_axis_alignment(CrossAxisAlignment::Center)
+                        .gap(t.space(Space::Md)),
+                ),
+            ),
+        ))
+        .cross_axis_alignment(CrossAxisAlignment::Start)
+        .gap(t.space(Space::Sm)),
+    )
+}
+
+fn feedback_section(gallery: &Gallery) -> impl WidgetView<Gallery> + use<> {
+    let t = &gallery.theme;
+    section(
+        t,
+        "Feedback",
+        flex_col((
+            slot(
+                t,
+                "Progress",
+                sized_box(progress_bar(Some(gallery.progress)))
+                    .dims(Dimensions::new(Dim::Fixed(Length::px(220.0)), Dim::Auto)),
+            ),
+            slot(
+                t,
+                "Indeterminate",
+                sized_box(progress_bar(None))
+                    .dims(Dimensions::new(Dim::Fixed(Length::px(220.0)), Dim::Auto)),
+            ),
+            slot(t, "Spinner", spinner()),
+        ))
+        .cross_axis_alignment(CrossAxisAlignment::Start)
+        .gap(t.space(Space::Sm)),
+    )
+}
+
+fn app_logic(gallery: &mut Gallery) -> impl WidgetView<Gallery> + use<> {
+    let t = &gallery.theme;
+    let header = flex_row((
+        label("Widgets")
+            .text_size(TextSize::Title)
+            .color(t.color(Role::Text)),
+        FlexSpacer::Flex(1.0),
+        density_switch(t),
+    ))
+    .cross_axis_alignment(CrossAxisAlignment::Center)
+    .gap(t.space(Space::Md))
+    .padding(t.space(Space::Md))
+    .background_color(t.color(Role::Panel));
+
+    let body = flex_row((
+        flex_col((text_section(gallery), input_section(gallery)))
+            .cross_axis_alignment(CrossAxisAlignment::Start)
+            .gap(t.space(Space::Xl))
+            .flex(1.0),
+        flex_col((choice_section(gallery), feedback_section(gallery)))
+            .cross_axis_alignment(CrossAxisAlignment::Start)
+            .gap(t.space(Space::Xl))
+            .flex(1.0),
+    ))
+    .gap(t.space(Space::Xl))
+    .padding(t.space(Space::Lg));
+
+    flex_col((header, body))
+        .cross_axis_alignment(CrossAxisAlignment::Start)
+        .gap(Space::None)
+        .background_color(t.color(Role::App))
 }
 
 fn run(event_loop: EventLoopBuilder) -> Result<(), EventLoopError> {
-    // Set up the initial state of the app
-    let data = WidgetGallery {
-        tab: GalleryTab::Progress,
-        progress: Some(0.5),
-        checked: false,
-        collapsed: true,
+    let gallery = Gallery {
+        theme: Theme {
+            density: Density::Cozy,
+        },
+        text: "Untitled document".into(),
+        checked: true,
+        switched: true,
+        choice: 1,
+        amount: 0.62,
+        progress: 0.4,
     };
-
-    // Instantiate and run the UI using the passed event loop.
-    let min_window_size = LogicalSize::new(300., 200.);
-    let window_size = LogicalSize::new(650., 500.);
-    let app = Xilem::new_simple(
-        data,
-        app_logic,
-        WindowOptions::new("Xilem widgets")
-            .with_min_inner_size(min_window_size)
-            .with_initial_inner_size(window_size),
-    );
-    app.run_in(event_loop)?;
-    Ok(())
+    let background = gallery.theme.color(Role::App);
+    let window_options = WindowOptions::new("Widgets")
+        .with_min_inner_size(LogicalSize::new(560., 420.))
+        .with_initial_inner_size(LogicalSize::new(880., 620.));
+    Xilem::new_simple(gallery, app_logic, window_options)
+        .with_default_properties(default_property_set())
+        .with_default_base_color(background)
+        .run_in(event_loop)
 }
-
-// Boilerplate code: Identical across all applications which support Android
 
 fn main() -> Result<(), EventLoopError> {
     run(EventLoop::with_user_event())
 }
+
+// Boilerplate code: Identical across all applications which support Android
+
 #[cfg(target_os = "android")]
 // Safety: We are following `android_activity`'s docs here
 #[expect(

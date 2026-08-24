@@ -159,8 +159,8 @@ impl<State: 'static, Action: 'static> TextInput<State, Action> {
 
     /// Sets text size.
     #[doc(alias = "font_size")]
-    pub fn text_size(mut self, text_size: f32) -> Self {
-        self.text_size = text_size;
+    pub fn text_size(mut self, text_size: impl Into<f32>) -> Self {
+        self.text_size = text_size.into();
         self
     }
 
