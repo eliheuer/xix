@@ -16,12 +16,19 @@
 //! are the defects that make an application look homemade, and they are
 //! invisible one widget at a time.
 //!
-//! What it catches, today, in one look: the application's accent is green
-//! and every built-in control is blue, because the widget defaults come
-//! from a hardcoded property set rather than from the theme. The built-in
-//! controls also set their own text size, so their labels are larger than
-//! the application's body text sitting next to them. Both are the same
-//! defect, and it is the next thing to fix (DESIGN.md D14).
+//! It caught its own first defect. The application's accent is green, and
+//! every built-in control rendered blue, because the widget defaults were
+//! a hardcoded property set rather than the theme. `masonry::theme::Theme`
+//! now exists for that reason, and this example builds its widget defaults
+//! from the same colors its own views use, so the switch, the slider, the
+//! progress bar, the checkbox tick, and the radio dot all follow.
+//!
+//! One half of that defect is still here, and it is worth seeing: the
+//! built-in labels are a size larger than the body text beside them. Color
+//! is a property the theme can set for every widget at once; text size is
+//! decided by each view at construction, because text style does not
+//! inherit down the tree. That is DESIGN.md D11, finding 3, and it is the
+//! next thing to fix.
 //!
 //! It is also the fastest visual review surface in the repo. Render it
 //! headlessly and look at the PNG:
@@ -34,7 +41,7 @@ use masonry::kernel::{ControlSize, Radius, Space, TextSize};
 use masonry::layout::{Dim, Length};
 use masonry::properties::Dimensions;
 use masonry::properties::types::CrossAxisAlignment;
-use masonry::theme::default_property_set;
+use masonry::theme::Theme as WidgetTheme;
 use winit::dpi::LogicalSize;
 use winit::error::EventLoopError;
 use xilem::style::Style;
@@ -105,6 +112,25 @@ impl Theme {
         // The floor a text control needs. It belongs in the widget, not
         // here: see DESIGN.md D13.
         Length::px(scaled.max(f64::from(TextSize::Body.px()) * 2.3))
+    }
+
+    /// The defaults every built-in widget styles itself from, stated in
+    /// this theme's own terms. Without this the app's accent and the
+    /// controls' accent are different colors.
+    fn widget_defaults(&self) -> masonry::core::DefaultProperties {
+        WidgetTheme {
+            app: self.color(Role::App),
+            panel: self.color(Role::Panel),
+            control: self.color(Role::Field),
+            control_active: self.color(Role::Panel),
+            field: self.color(Role::Field),
+            accent: self.color(Role::Accent),
+            text: self.color(Role::Text),
+            text_muted: self.color(Role::Muted),
+            ..WidgetTheme::dark()
+        }
+        .with_text_size(TextSize::Body.px())
+        .property_set()
     }
 
     fn color(&self, role: Role) -> Color {
@@ -427,11 +453,12 @@ fn run(event_loop: EventLoopBuilder) -> Result<(), EventLoopError> {
         progress: 0.4,
     };
     let background = gallery.theme.color(Role::App);
+    let widget_defaults = gallery.theme.widget_defaults();
     let window_options = WindowOptions::new("Widgets")
         .with_min_inner_size(LogicalSize::new(560., 420.))
         .with_initial_inner_size(LogicalSize::new(880., 620.));
     Xilem::new_simple(gallery, app_logic, window_options)
-        .with_default_properties(default_property_set())
+        .with_default_properties(widget_defaults)
         .with_default_base_color(background)
         .run_in(event_loop)
 }

@@ -890,6 +890,38 @@ evidence. Three things came out of writing them.
   next thing the island needs is reference scenes (D10) and a tool
   delegate, so the gesture enum stops being per-app boilerplate.
 
+### D14. A theme is data, and the widget defaults are the proof
+
+The gallery example put every built-in control on one screen next to
+application views that used the kernel, and the first render answered a
+question the port had never asked: the application's accent was green and
+every built-in control was blue. Not a bug in either place. The defaults
+of all thirty-odd widgets were a few hundred lines of hardcoded colors
+and pixel counts in `theme.rs`, reachable only by rewriting the function.
+
+So `masonry::theme::Theme` now exists: a struct of role colors plus the
+kernel steps a widget styles itself from, with `Theme::dark()` as the
+shipped default and `Theme::property_set()` generating what
+`default_property_set()` used to hardcode. An application states its
+theme once and every built-in control follows it. The gallery does that
+in nine lines and its controls turn green.
+
+Two things this settles, and one it does not:
+
+- Settled: a theme is data, not code. It was already the plan (D8); it is
+  now true for the widget set, and the shipped dark theme is one value of
+  the type rather than the only possible interface.
+
+- Settled: the kernel reaches the widgets. `Theme` holds `Radius::Md`,
+  `Space::Md`, and `Stroke::Hairline` rather than 6, 8, and 1, so a
+  density change moves every built-in control with it.
+
+- Not settled: text size. Color is a property, so one theme sets it for
+  every widget at once. Text size is chosen by each view when it is
+  built, so the gallery still shows built-in labels a size larger than the
+  body text beside them. This is D11's third finding, and the fix is an
+  inherited text style rather than a wider `Theme`.
+
 ### The one-sentence conclusion
 
 xix is not a reactive-architecture bet; it is a Scene Island substrate

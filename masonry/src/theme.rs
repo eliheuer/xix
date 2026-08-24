@@ -8,6 +8,7 @@
 use crate::core::{
     DefaultProperties, PropertySet, PropertyStack, Selector, StyleProperty, StyleSet,
 };
+use crate::kernel::{Radius, Space, Stroke};
 use crate::layout::{AsUnit, Length};
 use crate::palette::css::DIM_GRAY;
 use crate::parley::{GenericFamily, LineHeight};
@@ -55,345 +56,475 @@ pub const DEFAULT_SPACER_LEN: Length = Length::const_px(10.0);
 pub const WIDGET_CONTROL_COMPONENT_PADDING: Length = Length::const_px(4.0);
 pub const SELECTOR_MIN_WIDTH: f64 = 100.0;
 
+/// The values every built-in widget styles itself from.
+///
+/// Before this existed, [`default_property_set`] was a few hundred lines of
+/// hardcoded colors and pixel counts, so an application that themed its own
+/// views got a screen where its accent was one color and every built-in
+/// control was another. A theme is data, and this is the data.
+///
+/// The measurements come from the [`kernel`](crate::kernel) scale, so a
+/// theme states intent (`Radius::Md`) rather than a number, and one change
+/// moves every widget that named that step.
+#[derive(Clone, Copy, Debug)]
+pub struct Theme {
+    /// The window behind everything.
+    pub app: Color,
+    /// A panel, sidebar, or bar that sits on the app surface.
+    pub panel: Color,
+    /// The face of a control: a button, a chip, a track.
+    pub control: Color,
+    /// The face of a control that is pressed or active.
+    pub control_active: Color,
+    /// The inside of a text field.
+    pub field: Color,
+    /// A border at rest.
+    pub border: Color,
+    /// A border under the pointer.
+    pub border_hover: Color,
+    /// A border that has to be seen: a scrollbar edge, a strong divider.
+    pub border_strong: Color,
+    /// The focus ring.
+    pub focus: Color,
+    /// The color that means "this one".
+    pub accent: Color,
+    /// Body text.
+    pub text: Color,
+    /// Secondary text.
+    pub text_muted: Color,
+    /// Text that cannot be used right now.
+    pub text_disabled: Color,
+    /// Placeholder text inside an empty field.
+    pub placeholder: Color,
+    /// The body text size, in logical pixels.
+    pub text_size: f32,
+    /// The corner every control rounds to.
+    pub radius: Radius,
+    /// The border width every control draws.
+    pub stroke: Stroke,
+    /// The inset inside a control, across the axis of its text.
+    pub control_padding: Space,
+    /// The gap between two adjacent widgets.
+    pub gap: Space,
+}
+
+impl Default for Theme {
+    fn default() -> Self {
+        Self::dark()
+    }
+}
+
+impl Theme {
+    /// The dark theme the framework ships with.
+    pub const fn dark() -> Self {
+        Self {
+            app: BACKGROUND_COLOR,
+            panel: ZYNC_900,
+            control: ZYNC_800,
+            control_active: ZYNC_700,
+            field: TEXT_BACKGROUND_COLOR,
+            border: ZYNC_700,
+            border_hover: ZYNC_500,
+            border_strong: ZYNC_600,
+            focus: FOCUS_COLOR,
+            accent: ACCENT_COLOR,
+            text: TEXT_COLOR,
+            text_muted: DIM_GRAY,
+            text_disabled: DISABLED_TEXT_COLOR,
+            placeholder: PLACEHOLDER_COLOR,
+            text_size: TEXT_SIZE_NORMAL,
+            radius: Radius::Md,
+            stroke: Stroke::Hairline,
+            control_padding: Space::Md,
+            gap: Space::Md,
+        }
+    }
+
+    /// Returns a copy with a different accent color.
+    pub const fn with_accent(mut self, accent: Color) -> Self {
+        self.accent = accent;
+        self
+    }
+
+    /// Returns a copy with a different body text size.
+    pub const fn with_text_size(mut self, text_size: f32) -> Self {
+        self.text_size = text_size;
+        self
+    }
+}
+
+/// The property set for the framework's dark theme.
+///
+/// Equivalent to `Theme::dark().property_set()`.
 pub fn default_property_set() -> DefaultProperties {
-    let mut properties = DefaultProperties::new();
+    Theme::dark().property_set()
+}
 
-    // Badge
-    properties.insert::<Badge, _>(Padding::from_vh(3.px(), 5.px()));
-    properties.insert::<Badge, _>(CornerRadius { radius: 999.px() });
-    properties.insert::<Badge, _>(BorderWidth { width: 0.px() });
-    properties.insert::<Badge, _>(Background::Color(ACCENT_COLOR));
-    properties.insert::<Badge, _>(BorderColor { color: ZYNC_700 });
-    {
-        let mut stack = PropertyStack::new();
-        stack.push(
-            Selector::new().with_disabled(true),
-            Background::Color(ZYNC_800),
-        );
-        properties.insert_stack::<Badge>(stack);
-    }
+impl Theme {
+    /// Builds the default properties of every built-in widget from this
+    /// theme.
+    pub fn property_set(&self) -> DefaultProperties {
+        let mut properties = DefaultProperties::new();
 
-    // Button
-    properties.insert::<Button, _>(Padding::from_vh(6.px(), 16.px()));
-    properties.insert::<Button, _>(CornerRadius { radius: 6.px() });
-    properties.insert::<Button, _>(BorderWidth {
-        width: BORDER_WIDTH,
-    });
-    properties.insert::<Button, _>(Background::Color(ZYNC_800));
-    properties.insert::<Button, _>(BorderColor { color: ZYNC_700 });
-    {
-        let mut stack = PropertyStack::new();
-        stack.push(
-            Selector::new().with_hovered(true),
-            BorderColor { color: ZYNC_500 },
-        );
-        stack.push(
-            Selector::new().with_focused(true),
-            BorderColor { color: FOCUS_COLOR },
-        );
-        stack.push(
-            Selector::new().with_active(true),
-            Background::Color(ZYNC_700),
-        );
-        stack.push(
-            Selector::new().with_disabled(true),
-            Background::Color(Color::BLACK),
-        );
-        properties.insert_stack::<Button>(stack);
-    }
+        // Badge
+        properties.insert::<Badge, _>(Padding::from_vh(3.px(), 5.px()));
+        properties.insert::<Badge, _>(CornerRadius { radius: 999.px() });
+        properties.insert::<Badge, _>(BorderWidth { width: 0.px() });
+        properties.insert::<Badge, _>(Background::Color(self.accent));
+        properties.insert::<Badge, _>(BorderColor {
+            color: self.control_active,
+        });
+        {
+            let mut stack = PropertyStack::new();
+            stack.push(
+                Selector::new().with_disabled(true),
+                Background::Color(self.control),
+            );
+            properties.insert_stack::<Badge>(stack);
+        }
 
-    // Checkbox
-    properties.insert::<Checkbox, _>(CornerRadius { radius: 4.px() });
-    properties.insert::<Checkbox, _>(BorderWidth {
-        width: BORDER_WIDTH,
-    });
-    properties.insert::<Checkbox, _>(Background::Color(ZYNC_800));
-    properties.insert::<Checkbox, _>(BorderColor { color: ZYNC_700 });
-    properties.insert::<Checkbox, _>(CheckmarkStrokeWidth { width: 2.0 });
-    properties.insert::<Checkbox, _>(CheckmarkColor { color: TEXT_COLOR });
-    {
-        let mut stack = PropertyStack::new();
-        stack.push(
-            Selector::new().with_hovered(true),
-            BorderColor { color: ZYNC_500 },
-        );
-        stack.push(
-            Selector::new().with_focused(true),
-            BorderColor { color: FOCUS_COLOR },
-        );
-        stack.push(
-            Selector::new().with_active(true),
-            Background::Color(ZYNC_700),
-        );
-        stack.push(
-            Selector::new().with_disabled(true),
-            PropertySet::new()
-                .with(Background::Color(Color::BLACK))
-                .with(CheckmarkColor {
-                    color: DISABLED_TEXT_COLOR,
-                }),
-        );
-        properties.insert_stack::<Checkbox>(stack);
-    }
-
-    // DisclosureButton
-    properties.insert::<DisclosureButton, _>(ContentColor::new(DIM_GRAY));
-    properties.insert::<DisclosureButton, _>(Dimensions::fixed(
-        Length::const_px(16.),
-        Length::const_px(16.),
-    ));
-    properties.insert::<DisclosureButton, _>(Padding::all(4.px()));
-
-    // Divider
-    properties.insert::<Divider, _>(ContentColor::new(ZYNC_500));
-
-    // Switch
-    properties.insert::<Switch, _>(CornerRadius { radius: 10.px() }); // Full pill shape
-    properties.insert::<Switch, _>(BorderWidth {
-        width: BORDER_WIDTH,
-    });
-    properties.insert::<Switch, _>(Background::Color(ZYNC_700));
-    properties.insert::<Switch, _>(BorderColor { color: ZYNC_700 });
-    properties.insert::<Switch, _>(ThumbColor(Color::WHITE));
-    properties.insert::<Switch, _>(ThumbRadius(8.px()));
-    properties.insert::<Switch, _>(TrackThickness(20.px()));
-    {
-        let mut stack = PropertyStack::new();
-        stack.push(
-            Selector::new().with_hovered(true),
-            BorderColor { color: ZYNC_500 },
-        );
-        stack.push(
-            Selector::new().with_focused(true),
-            BorderColor { color: FOCUS_COLOR },
-        );
-        stack.push(
-            Selector::classes(&["#toggled"]),
-            Background::Color(ACCENT_COLOR),
-        );
-        stack.push(
-            Selector::new().with_active(true),
-            Background::Color(ZYNC_600),
-        );
-        stack.push(
-            Selector::new().with_disabled(true),
-            Background::Color(Color::BLACK),
-        );
-        properties.insert_stack::<Switch>(stack);
-    }
-
-    // FIXME
-    use crate::widgets::Selector as SelectorButton;
-
-    // Selector
-    properties.insert::<SelectorButton, _>(Padding::from_vh(6.px(), 16.px()));
-    properties.insert::<SelectorButton, _>(CornerRadius { radius: 2.px() });
-    properties.insert::<SelectorButton, _>(BorderWidth {
-        width: BORDER_WIDTH,
-    });
-
-    properties.insert::<SelectorButton, _>(Background::Color(ZYNC_800));
-    properties.insert::<SelectorButton, _>(BorderColor { color: ZYNC_700 });
-    {
-        let mut stack = PropertyStack::new();
-        stack.push(
-            Selector::new().with_active(true),
-            Background::Color(ZYNC_700),
-        );
-        stack.push(
-            Selector::new().with_disabled(true),
-            Background::Color(Color::BLACK),
-        );
-        stack.push(
-            Selector::new().with_hovered(true),
-            BorderColor { color: ZYNC_500 },
-        );
-        stack.push(
-            Selector::new().with_focused(true),
-            BorderColor { color: FOCUS_COLOR },
-        );
-        properties.insert_stack::<SelectorButton>(stack);
-    }
-
-    // SelectorItem
-    properties.insert::<SelectorItem, _>(Padding::from_vh(6.px(), 16.px()));
-    properties.insert::<SelectorItem, _>(Background::Color(ZYNC_900));
-    {
-        let mut stack = PropertyStack::new();
-        stack.push(
-            Selector::new().with_active(true),
-            Background::Color(ZYNC_800),
-        );
-        stack.push(
-            Selector::new().with_disabled(true),
-            Background::Color(Color::BLACK),
-        );
-        properties.insert_stack::<SelectorItem>(stack);
-    }
-
-    // Flex
-    properties.insert::<Flex, _>(Gap::new(DEFAULT_GAP));
-
-    // Grid
-    properties.insert::<Grid, _>(Gap::ZERO);
-
-    // TextInput
-    properties.insert::<TextInput, _>(Padding::from_vh(6.px(), 12.px()));
-    properties.insert::<TextInput, _>(CornerRadius { radius: 4.px() });
-    properties.insert::<TextInput, _>(BorderWidth {
-        width: BORDER_WIDTH,
-    });
-    properties.insert::<TextInput, _>(BorderColor { color: ZYNC_600 });
-    properties.insert::<TextInput, _>(PlaceholderColor::new(PLACEHOLDER_COLOR));
-    properties.insert::<TextInput, _>(CaretColor { color: TEXT_COLOR });
-    properties.insert::<TextInput, _>(SelectionColor {
-        color: ACCENT_COLOR,
-    });
-    properties.insert::<TextInput, _>(Background::Color(TEXT_BACKGROUND_COLOR));
-    {
-        let mut stack = PropertyStack::new();
-        stack.push(
-            Selector::classes(&["#unfocused"]),
-            SelectionColor {
-                color: DISABLED_TEXT_COLOR,
-            },
-        );
-        stack.push(
-            Selector::new().with_focused(true),
-            BorderColor { color: FOCUS_COLOR },
-        );
-        stack.push(
-            Selector::new().with_disabled(true),
-            Background::Color(TEXT_BACKGROUND_COLOR),
-        );
-        properties.insert_stack::<TextInput>(stack);
-    }
-
-    // TextArea
-    properties.insert::<TextArea<false>, _>(ContentColor::new(TEXT_COLOR));
-    properties.insert::<TextArea<false>, _>(CaretColor { color: TEXT_COLOR });
-    properties.insert::<TextArea<false>, _>(SelectionColor {
-        color: ACCENT_COLOR,
-    });
-    {
-        let mut stack = PropertyStack::new();
-        stack.push(
-            Selector::new().with_disabled(true),
-            ContentColor::new(DISABLED_TEXT_COLOR),
-        );
-        properties.insert_stack::<TextArea<false>>(stack);
-    }
-    properties.insert::<TextArea<true>, _>(ContentColor::new(TEXT_COLOR));
-    properties.insert::<TextArea<true>, _>(CaretColor { color: TEXT_COLOR });
-    properties.insert::<TextArea<true>, _>(SelectionColor {
-        color: ACCENT_COLOR,
-    });
-    {
-        let mut stack = PropertyStack::new();
-        stack.push(
-            Selector::new().with_disabled(true),
-            ContentColor::new(DISABLED_TEXT_COLOR),
-        );
-        properties.insert_stack::<TextArea<true>>(stack);
-    }
-
-    // Label
-    properties.insert::<Label, _>(ContentColor::new(TEXT_COLOR));
-    {
-        let mut stack = PropertyStack::new();
-        stack.push(
-            Selector::new().with_disabled(true),
-            ContentColor::new(DISABLED_TEXT_COLOR),
-        );
-        properties.insert_stack::<Label>(stack);
-    }
-
-    // ProgressBar
-    properties.insert::<ProgressBar, _>(CornerRadius { radius: 2.px() });
-    properties.insert::<ProgressBar, _>(BorderWidth {
-        width: BORDER_WIDTH,
-    });
-
-    properties.insert::<ProgressBar, _>(Background::Color(ZYNC_900));
-    properties.insert::<ProgressBar, _>(BorderColor { color: ZYNC_800 });
-    properties.insert::<ProgressBar, _>(BarColor(ACCENT_COLOR));
-
-    // RadioButton
-    properties.insert::<RadioButton, _>(BorderWidth {
-        width: BORDER_WIDTH,
-    });
-
-    properties.insert::<RadioButton, _>(Background::Color(ZYNC_800));
-    properties.insert::<RadioButton, _>(BorderColor { color: ZYNC_700 });
-    properties.insert::<RadioButton, _>(CheckmarkColor { color: TEXT_COLOR });
-    {
-        let mut stack = PropertyStack::new();
-        stack.push(
-            Selector::new().with_active(true),
-            Background::Color(ZYNC_700),
-        );
-        stack.push(
-            Selector::new().with_hovered(true),
-            BorderColor { color: ZYNC_500 },
-        );
-        stack.push(
-            Selector::new().with_focused(true),
-            BorderColor { color: FOCUS_COLOR },
-        );
-        stack.push(
-            Selector::new().with_disabled(true),
-            (
-                CheckmarkColor::new(DISABLED_TEXT_COLOR),
+        // Button
+        properties.insert::<Button, _>(Padding::from_vh(6.px(), 16.px()));
+        properties.insert::<Button, _>(CornerRadius { radius: 6.px() });
+        properties.insert::<Button, _>(BorderWidth {
+            width: self.stroke.length(),
+        });
+        properties.insert::<Button, _>(Background::Color(self.control));
+        properties.insert::<Button, _>(BorderColor {
+            color: self.control_active,
+        });
+        {
+            let mut stack = PropertyStack::new();
+            stack.push(
+                Selector::new().with_hovered(true),
+                BorderColor {
+                    color: self.border_hover,
+                },
+            );
+            stack.push(
+                Selector::new().with_focused(true),
+                BorderColor { color: self.focus },
+            );
+            stack.push(
+                Selector::new().with_active(true),
+                Background::Color(self.control_active),
+            );
+            stack.push(
+                Selector::new().with_disabled(true),
                 Background::Color(Color::BLACK),
-            ),
-        );
-        properties.insert_stack::<RadioButton>(stack);
+            );
+            properties.insert_stack::<Button>(stack);
+        }
+
+        // Checkbox
+        properties.insert::<Checkbox, _>(CornerRadius { radius: 4.px() });
+        properties.insert::<Checkbox, _>(BorderWidth {
+            width: self.stroke.length(),
+        });
+        properties.insert::<Checkbox, _>(Background::Color(self.control));
+        properties.insert::<Checkbox, _>(BorderColor {
+            color: self.control_active,
+        });
+        properties.insert::<Checkbox, _>(CheckmarkStrokeWidth { width: 2.0 });
+        properties.insert::<Checkbox, _>(CheckmarkColor { color: self.text });
+        {
+            let mut stack = PropertyStack::new();
+            stack.push(
+                Selector::new().with_hovered(true),
+                BorderColor {
+                    color: self.border_hover,
+                },
+            );
+            stack.push(
+                Selector::new().with_focused(true),
+                BorderColor { color: self.focus },
+            );
+            stack.push(
+                Selector::new().with_active(true),
+                Background::Color(self.control_active),
+            );
+            stack.push(
+                Selector::new().with_disabled(true),
+                PropertySet::new()
+                    .with(Background::Color(Color::BLACK))
+                    .with(CheckmarkColor {
+                        color: self.text_disabled,
+                    }),
+            );
+            properties.insert_stack::<Checkbox>(stack);
+        }
+
+        // DisclosureButton
+        properties.insert::<DisclosureButton, _>(ContentColor::new(DIM_GRAY));
+        properties.insert::<DisclosureButton, _>(Dimensions::fixed(
+            Length::const_px(16.),
+            Length::const_px(16.),
+        ));
+        properties.insert::<DisclosureButton, _>(Padding::all(4.px()));
+
+        // Divider
+        properties.insert::<Divider, _>(ContentColor::new(self.border_hover));
+
+        // Switch
+        properties.insert::<Switch, _>(CornerRadius { radius: 10.px() }); // Full pill shape
+        properties.insert::<Switch, _>(BorderWidth {
+            width: self.stroke.length(),
+        });
+        properties.insert::<Switch, _>(Background::Color(self.control_active));
+        properties.insert::<Switch, _>(BorderColor {
+            color: self.control_active,
+        });
+        properties.insert::<Switch, _>(ThumbColor(Color::WHITE));
+        properties.insert::<Switch, _>(ThumbRadius(8.px()));
+        properties.insert::<Switch, _>(TrackThickness(20.px()));
+        {
+            let mut stack = PropertyStack::new();
+            stack.push(
+                Selector::new().with_hovered(true),
+                BorderColor {
+                    color: self.border_hover,
+                },
+            );
+            stack.push(
+                Selector::new().with_focused(true),
+                BorderColor { color: self.focus },
+            );
+            stack.push(
+                Selector::classes(&["#toggled"]),
+                Background::Color(self.accent),
+            );
+            stack.push(
+                Selector::new().with_active(true),
+                Background::Color(self.border_strong),
+            );
+            stack.push(
+                Selector::new().with_disabled(true),
+                Background::Color(Color::BLACK),
+            );
+            properties.insert_stack::<Switch>(stack);
+        }
+
+        // FIXME
+        use crate::widgets::Selector as SelectorButton;
+
+        // Selector
+        properties.insert::<SelectorButton, _>(Padding::from_vh(6.px(), 16.px()));
+        properties.insert::<SelectorButton, _>(CornerRadius { radius: 2.px() });
+        properties.insert::<SelectorButton, _>(BorderWidth {
+            width: self.stroke.length(),
+        });
+
+        properties.insert::<SelectorButton, _>(Background::Color(self.control));
+        properties.insert::<SelectorButton, _>(BorderColor {
+            color: self.control_active,
+        });
+        {
+            let mut stack = PropertyStack::new();
+            stack.push(
+                Selector::new().with_active(true),
+                Background::Color(self.control_active),
+            );
+            stack.push(
+                Selector::new().with_disabled(true),
+                Background::Color(Color::BLACK),
+            );
+            stack.push(
+                Selector::new().with_hovered(true),
+                BorderColor {
+                    color: self.border_hover,
+                },
+            );
+            stack.push(
+                Selector::new().with_focused(true),
+                BorderColor { color: self.focus },
+            );
+            properties.insert_stack::<SelectorButton>(stack);
+        }
+
+        // SelectorItem
+        properties.insert::<SelectorItem, _>(Padding::from_vh(6.px(), 16.px()));
+        properties.insert::<SelectorItem, _>(Background::Color(self.panel));
+        {
+            let mut stack = PropertyStack::new();
+            stack.push(
+                Selector::new().with_active(true),
+                Background::Color(self.control),
+            );
+            stack.push(
+                Selector::new().with_disabled(true),
+                Background::Color(Color::BLACK),
+            );
+            properties.insert_stack::<SelectorItem>(stack);
+        }
+
+        // Flex
+        properties.insert::<Flex, _>(Gap::new(DEFAULT_GAP));
+
+        // Grid
+        properties.insert::<Grid, _>(Gap::ZERO);
+
+        // TextInput
+        properties.insert::<TextInput, _>(Padding::from_vh(6.px(), 12.px()));
+        properties.insert::<TextInput, _>(CornerRadius { radius: 4.px() });
+        properties.insert::<TextInput, _>(BorderWidth {
+            width: self.stroke.length(),
+        });
+        properties.insert::<TextInput, _>(BorderColor {
+            color: self.border_strong,
+        });
+        properties.insert::<TextInput, _>(PlaceholderColor::new(self.placeholder));
+        properties.insert::<TextInput, _>(CaretColor { color: self.text });
+        properties.insert::<TextInput, _>(SelectionColor { color: self.accent });
+        properties.insert::<TextInput, _>(Background::Color(self.field));
+        {
+            let mut stack = PropertyStack::new();
+            stack.push(
+                Selector::classes(&["#unfocused"]),
+                SelectionColor {
+                    color: self.text_disabled,
+                },
+            );
+            stack.push(
+                Selector::new().with_focused(true),
+                BorderColor { color: self.focus },
+            );
+            stack.push(
+                Selector::new().with_disabled(true),
+                Background::Color(self.field),
+            );
+            properties.insert_stack::<TextInput>(stack);
+        }
+
+        // TextArea
+        properties.insert::<TextArea<false>, _>(ContentColor::new(self.text));
+        properties.insert::<TextArea<false>, _>(CaretColor { color: self.text });
+        properties.insert::<TextArea<false>, _>(SelectionColor { color: self.accent });
+        {
+            let mut stack = PropertyStack::new();
+            stack.push(
+                Selector::new().with_disabled(true),
+                ContentColor::new(self.text_disabled),
+            );
+            properties.insert_stack::<TextArea<false>>(stack);
+        }
+        properties.insert::<TextArea<true>, _>(ContentColor::new(self.text));
+        properties.insert::<TextArea<true>, _>(CaretColor { color: self.text });
+        properties.insert::<TextArea<true>, _>(SelectionColor { color: self.accent });
+        {
+            let mut stack = PropertyStack::new();
+            stack.push(
+                Selector::new().with_disabled(true),
+                ContentColor::new(self.text_disabled),
+            );
+            properties.insert_stack::<TextArea<true>>(stack);
+        }
+
+        // Label
+        properties.insert::<Label, _>(ContentColor::new(self.text));
+        {
+            let mut stack = PropertyStack::new();
+            stack.push(
+                Selector::new().with_disabled(true),
+                ContentColor::new(self.text_disabled),
+            );
+            properties.insert_stack::<Label>(stack);
+        }
+
+        // ProgressBar
+        properties.insert::<ProgressBar, _>(CornerRadius { radius: 2.px() });
+        properties.insert::<ProgressBar, _>(BorderWidth {
+            width: self.stroke.length(),
+        });
+
+        properties.insert::<ProgressBar, _>(Background::Color(self.panel));
+        properties.insert::<ProgressBar, _>(BorderColor {
+            color: self.control,
+        });
+        properties.insert::<ProgressBar, _>(BarColor(self.accent));
+
+        // RadioButton
+        properties.insert::<RadioButton, _>(BorderWidth {
+            width: self.stroke.length(),
+        });
+
+        properties.insert::<RadioButton, _>(Background::Color(self.control));
+        properties.insert::<RadioButton, _>(BorderColor {
+            color: self.control_active,
+        });
+        properties.insert::<RadioButton, _>(CheckmarkColor { color: self.text });
+        {
+            let mut stack = PropertyStack::new();
+            stack.push(
+                Selector::new().with_active(true),
+                Background::Color(self.control_active),
+            );
+            stack.push(
+                Selector::new().with_hovered(true),
+                BorderColor {
+                    color: self.border_hover,
+                },
+            );
+            stack.push(
+                Selector::new().with_focused(true),
+                BorderColor { color: self.focus },
+            );
+            stack.push(
+                Selector::new().with_disabled(true),
+                (
+                    CheckmarkColor::new(self.text_disabled),
+                    Background::Color(Color::BLACK),
+                ),
+            );
+            properties.insert_stack::<RadioButton>(stack);
+        }
+
+        // Slider
+        properties.insert::<Slider, _>(TrackThickness(4.px()));
+        properties.insert::<Slider, _>(TrackColor {
+            active: self.accent,
+            inactive: self.control,
+        });
+        properties.insert::<Slider, _>(ThumbColor(self.text));
+        properties.insert::<Slider, _>(ThumbRadius(7.px()));
+        {
+            let mut stack = PropertyStack::new();
+            stack.push(
+                Selector::new().with_hovered(true),
+                BorderColor {
+                    color: self.border_hover,
+                },
+            );
+            stack.push(
+                Selector::new().with_focused(true),
+                BorderColor { color: self.focus },
+            );
+            properties.insert_stack::<Slider>(stack);
+        }
+
+        // Spinner
+        properties.insert::<Spinner, _>(TrackColor {
+            active: self.text,
+            inactive: Color::TRANSPARENT,
+        });
+        properties.insert::<Spinner, _>(TrackThickness(8.px()));
+        properties.insert::<Spinner, _>(AnimationDuration { seconds: 1.2 });
+
+        // StepInput
+        default_step_input_style::<u8>(self, &mut properties);
+        default_step_input_style::<i8>(self, &mut properties);
+        default_step_input_style::<u16>(self, &mut properties);
+        default_step_input_style::<i16>(self, &mut properties);
+        default_step_input_style::<u32>(self, &mut properties);
+        default_step_input_style::<i32>(self, &mut properties);
+        default_step_input_style::<u64>(self, &mut properties);
+        default_step_input_style::<i64>(self, &mut properties);
+        default_step_input_style::<usize>(self, &mut properties);
+        default_step_input_style::<isize>(self, &mut properties);
+        default_step_input_style::<f32>(self, &mut properties);
+        default_step_input_style::<f64>(self, &mut properties);
+
+        properties
     }
-
-    // Slider
-    properties.insert::<Slider, _>(TrackThickness(4.px()));
-    properties.insert::<Slider, _>(TrackColor {
-        active: ACCENT_COLOR,
-        inactive: ZYNC_800,
-    });
-    properties.insert::<Slider, _>(ThumbColor(TEXT_COLOR));
-    properties.insert::<Slider, _>(ThumbRadius(7.px()));
-    {
-        let mut stack = PropertyStack::new();
-        stack.push(
-            Selector::new().with_hovered(true),
-            BorderColor { color: ZYNC_500 },
-        );
-        stack.push(
-            Selector::new().with_focused(true),
-            BorderColor { color: FOCUS_COLOR },
-        );
-        properties.insert_stack::<Slider>(stack);
-    }
-
-    // Spinner
-    properties.insert::<Spinner, _>(TrackColor {
-        active: TEXT_COLOR,
-        inactive: Color::TRANSPARENT,
-    });
-    properties.insert::<Spinner, _>(TrackThickness(8.px()));
-    properties.insert::<Spinner, _>(AnimationDuration { seconds: 1.2 });
-
-    // StepInput
-    default_step_input_style::<u8>(&mut properties);
-    default_step_input_style::<i8>(&mut properties);
-    default_step_input_style::<u16>(&mut properties);
-    default_step_input_style::<i16>(&mut properties);
-    default_step_input_style::<u32>(&mut properties);
-    default_step_input_style::<i32>(&mut properties);
-    default_step_input_style::<u64>(&mut properties);
-    default_step_input_style::<i64>(&mut properties);
-    default_step_input_style::<usize>(&mut properties);
-    default_step_input_style::<isize>(&mut properties);
-    default_step_input_style::<f32>(&mut properties);
-    default_step_input_style::<f64>(&mut properties);
-
-    properties
 }
 
 /// Applies the default text styles for Masonry into `styles`.
@@ -402,33 +533,37 @@ pub fn default_text_styles(styles: &mut StyleSet) {
     styles.insert(GenericFamily::SystemUi.into());
 }
 
-fn default_step_input_style<T: Steppable>(properties: &mut DefaultProperties) {
+fn default_step_input_style<T: Steppable>(theme: &Theme, properties: &mut DefaultProperties) {
     properties.insert::<StepInput<T>, _>(Padding::from_vh(6.px(), 0.px()));
     properties.insert::<StepInput<T>, _>(CornerRadius { radius: 6.px() });
     properties.insert::<StepInput<T>, _>(BorderWidth {
-        width: BORDER_WIDTH,
+        width: theme.stroke.length(),
     });
 
-    properties.insert::<StepInput<T>, _>(ContentColor::new(TEXT_COLOR));
-    properties.insert::<StepInput<T>, _>(Background::Color(ZYNC_800));
-    properties.insert::<StepInput<T>, _>(BorderColor { color: ZYNC_700 });
+    properties.insert::<StepInput<T>, _>(ContentColor::new(theme.text));
+    properties.insert::<StepInput<T>, _>(Background::Color(theme.control));
+    properties.insert::<StepInput<T>, _>(BorderColor {
+        color: theme.control_active,
+    });
 
     {
         let mut stack = PropertyStack::new();
         stack.push(
             Selector::new().with_disabled(true),
             (
-                ContentColor::new(DISABLED_TEXT_COLOR),
+                ContentColor::new(theme.text_disabled),
                 Background::Color(Color::BLACK),
             ),
         );
         stack.push(
             Selector::new().with_hovered(true),
-            BorderColor { color: ZYNC_500 },
+            BorderColor {
+                color: theme.border_hover,
+            },
         );
         stack.push(
             Selector::new().with_focused(true),
-            BorderColor { color: FOCUS_COLOR },
+            BorderColor { color: theme.focus },
         );
 
         properties.insert_stack::<StepInput<T>>(stack);
