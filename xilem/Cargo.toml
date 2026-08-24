@@ -106,6 +106,15 @@ crate-type = ["cdylib"]
 required-features = ["web"]
 
 [[example]]
+name = "app_shell"
+
+[[example]]
+name = "app_shell_web"
+path = "examples/app_shell.rs"
+crate-type = ["cdylib"]
+required-features = ["web"]
+
+[[example]]
 name = "tokens"
 
 [[example]]
