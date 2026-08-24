@@ -815,6 +815,52 @@ designer would ship. Today, given xix, it produces the rough version,
 and given GPUI it produces the finished one. Closing that gap is the
 project.
 
+### D12. What shipped, and what the first framework pass found
+
+D11 is a set of decisions. The first of them is now in the fork, so this
+records what landed and what building it turned up.
+
+Landed: `masonry_core::kernel`, re-exported as `xilem::kernel`. `Space`,
+`ControlSize`, `Stroke`, `Radius`, and `TextSize`, converting into
+`Length`, `Dim`, `Padding`, `Gap`, and `f32`, so they pass straight into
+the existing styling APIs (`border_width`, `corner_radius`,
+`Dimensions::fixed`, and `Label::text_size` now take `impl Into<_>`).
+The Runebender port was rebuilt on it: every raw pixel is gone from its
+spacing, type, radius, border, and control sizes, and the five that
+remain are pane geometry. `xilem/examples/app_shell.rs` is the same
+thing from scratch, a full three-pane screen with three numbers in it.
+
+What the pass found:
+
+- Naming collides with the graphics stack. The obvious name for the
+  control-height scale is `Size`, and `kurbo::Size` is everywhere in
+  this codebase, so it is `ControlSize`. Any kernel type has to be
+  checked against kurbo, peniko, and parley before it is named.
+
+- The escape hatch has to be explicit, not implicit. `Dimensions::fixed`
+  became generic over `Into<Length>`, which cost the `const` form; it is
+  now `fixed_px`. That is the right split: the token path is the easy
+  one, the raw path is the one you have to type differently and can
+  grep for. Every kernel-adjacent API should follow it.
+
+- Pane geometry is not a token, and pretending otherwise would be
+  dishonest. A sidebar is 232 px because that is how wide the content
+  is, not because a scale says so. GPUI does the same. The kernel covers
+  spacing, control size, stroke, radius, and type, and stops there.
+
+- There is no icon set, and the default font has no symbols. A section
+  header that types a disclosure caret renders tofu, in the example and
+  in the port. Icons are framework furniture, the same class of thing as
+  menus: boring, skipped, and disqualifying when missing. The parts list
+  needs a small vector icon set with the kernel's sizes.
+
+- The kernel is static, and a theme is data. `tokens.rs` drives density,
+  radius, and hue from sliders, which the static enums cannot express.
+  Both are wanted: the enums fix the vocabulary, and a theme should
+  resolve them, so a compact density can move `Space::Md` from 8 to 6
+  everywhere at once. That resolution path (D9's theme-context finding)
+  is the next piece.
+
 ### The one-sentence conclusion
 
 xix is not a reactive-architecture bet; it is a Scene Island substrate
