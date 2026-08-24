@@ -706,6 +706,96 @@ canvas work, and it hit a different set of gaps.
   under the editable one. The Scene Island (D1) should take a list of
   reference scenes, not just the one it edits.
 
+### D11. Why the GPUI port looks better with less effort
+
+This is the most important finding in the document, because it is about
+the thing xix claims to be for. Both ports are written by the same
+person with the same agents against the same design. The GPUI one looks
+finished and the xix one looks rough, and the reason is not taste or
+time. It is five properties of the API that the GPUI version has and
+xix does not.
+
+**1. Style and interactivity belong to a generic container, not to
+specific widgets.** In GPUI every node is `div()`, and `div()` takes
+background, border, radius, padding, flex, text style, an id, and
+`on_click`. A row, a chip, a dot, a tab, a swatch, and a button are all
+the same call with different arguments. In xix, `button` is the only
+thing that clicks and it arrives with a padding, a minimum size, and a
+background from the property set, while `sized_box` is the only thing
+that carries a box style and it cannot click. Consequences, all of them
+observed: a 10 px dot is a button with its padding zeroed inside a
+fixed-size box; a layer row that needs two independent hit targets
+becomes two sibling buttons in a flex row instead of one row with two
+handlers; a list row is four nested views where GPUI needs one.
+Decision: xix ships a styled, hit-testable, focusable container as the
+base of the parts list, and every part is that container plus paint.
+
+**2. A closed scale beats a free f64.** GPUI spacing is `px_1` to
+`px_4` and its type is `text_xs` and `text_sm`, so an agent cannot land
+between steps. The xix port, written the same way, drifted to twenty
+distinct spacing values and four text sizes, and the drift is what
+reads as rough: fields at three different heights, gaps at 4, 5, 6, 8,
+10 and 12 px in one panel. This is the exact failure section 3 says the
+framework exists to prevent, and the port hit it because the design
+kernel (D8) is still a plan. The port now carries `Space`, `Type`, and
+`Radius` enums in its own `ui.rs`, which fixed the rhythm in one pass.
+That file is evidence, not a solution: every app on xix would write it
+again, worse. Decision: the kernel moves into the framework, and widget
+APIs take the enum and nothing else.
+
+**3. Text style must cascade.** `text_sm()` on a GPUI container sets
+the type for everything under it, so an agent states it once per panel.
+In xix every label carries its own size and color, so an agent has to
+repeat it at every leaf and will miss some. That is literally how the
+inspector ended up with 16 px rows next to 12 px rows. Decision: text
+style is an inherited property on the widget tree, set on a container
+and read by the text widgets under it.
+
+**4. Layout intent needs one-word names.** `flex_1()`, `items_center()`,
+`justify_between()`, `min_h(0)`, `overflow_y_scroll()`. The xix
+equivalents are `sized_box(..).dims(Dimensions::new(Dim::Stretch,
+Dim::Fixed(Length::px(22.0))))`, a `FlexSpacer::Flex(1.0)` child, and a
+`portal`. More nodes, more concepts, and more ways to be wrong: wrapping
+the self-scrolling grid in a portal produced a rail that painted three
+rows and then a dead region, silently. Decision: fill, hug, fixed,
+center, between, and scroll are one-word modifiers on every view, and
+scroll inside scroll is a debug-time lint.
+
+**5. The framework must be abstractable by an ordinary programmer.**
+In GPUI a helper that returns a styled row is a function returning
+`Div`. The same helper in xix needs this signature:
+
+```rust
+pub fn row<S>(children: S, gap: Space) -> impl WidgetView<App> + use<S>
+where
+    S: FlexSequence<App, ()> + 'static,
+    Flex<S, App, ()>: WidgetView<App, ()>,
+    <Flex<S, App, ()> as WidgetView<App, ()>>::Widget: UsesProperty<Gap>,
+```
+
+Three where-clauses, one of them naming an associated type's property
+bound, to say "a row with a gap". An agent will not write that. It will
+inline the flex call at every site instead, and then the values drift,
+which is finding 2 again. The generics problem the maintainer's review
+describes is usually stated as an error-message problem. It is worse
+than that: it blocks the app from building its own vocabulary, which is
+the one thing that keeps a large UI consistent. Decision: children take
+a boxed collection (which also removes the sixteen-child cap), and the
+style methods stay available on the erased view type, so a helper's
+return type is nameable.
+
+One honest counterweight: part of the GPUI advantage is
+`gpui_component`, a styled parts library with inputs, sliders, and
+resizable panels already built. That is section 6's work, and no API
+change substitutes for it. But the five properties above are what make
+that library cheap to write and cheap to use, and they come first.
+
+The test from section 2 should be read against this: an agent given
+only the framework and a one-paragraph brief produces a screen a
+designer would ship. Today, given xix, it produces the rough version,
+and given GPUI it produces the finished one. Closing that gap is the
+project.
+
 ### The one-sentence conclusion
 
 xix is not a reactive-architecture bet; it is a Scene Island substrate
