@@ -478,7 +478,7 @@ split above.
 ## 18. Decisions after the Runebender port
 
 This section is the review. Sections 1 through 17 are the exploration;
-this is what building a real font editor on xix (57 slices and counting,
+this is what building a real font editor on xix (61 slices and counting,
 see `runebender-xix/PORT.md`) settled. Each decision states what the port
 proved and what the fork will do. These are firm unless a later
 prototype overturns them. D1 through D8 came out of the first pass;
@@ -655,6 +655,56 @@ missing primitive, not an app problem.
   running the GUI. This is more evidence for D7: the headless renderer
   is the design engineer's and the agent's primary lens and a first
   product surface, not a test utility.
+
+### D10. What the inspector panel taught (third pass)
+
+The third pass moved the master switcher and the axis sliders out of a
+strip across the top of the canvas and into the inspector, where the
+GPUI version keeps them, then rebuilt the sidebar rows, the search
+toggles, and the coordinate picker to match. It is panel work, not
+canvas work, and it hit a different set of gaps.
+
+- The view tuple has a hard arity limit. A flex container takes a tuple
+  of children and the trait is implemented up to sixteen. Adding a
+  seventeenth section to the inspector is a type error with no useful
+  message, and the fix is to nest a container purely to satisfy the
+  trait. Panels in a real application have dozens of children. The
+  framework needs a children-collection that does not run out, and the
+  error, when there is one, must say so.
+
+- Every small control fights its own padding. A 10 px dot in the
+  9-point reference picker is a button with the padding zeroed and a
+  fixed-size box wrapped around it, or it stretches into a pill. A
+  22 px thumbnail is the same. The parts list needs a control size
+  scale (dot, icon, compact, default) instead of one button that
+  assumes a text label.
+
+- Style props are order-sensitive in a way nothing announces. Calling
+  `.color()` before `.text_size()` fails to compile, because the first
+  property wrapper hides the inherent methods of the widget under it.
+  The rule (inherent methods first, style props last) is learnable, but
+  it is invisible, and an agent hits it every time.
+
+- Nesting a scroller inside a scroller fails silently. Wrapping the
+  self-scrolling glyph grid in a portal produced a rail that painted
+  three rows and then a dead region, with no warning. Scrollable is a
+  property of a widget that the framework knows about, so a container
+  that scrolls a child that already scrolls is a detectable mistake and
+  should be a debug-time lint.
+
+- Text does not clip to its box. A master named "Bricolage Grotesque
+  96pt ExtraBold" runs straight out of a 250 px panel and over the
+  canvas. The port works around it by computing short names. Overflow
+  behavior (clip, ellipsis, wrap) belongs on the text widget, and the
+  default must be to stay inside the box.
+
+- Reference layers are the general case of the ghost overlay. Showing
+  every other master at once made the canvas unreadable, so the port
+  now draws only the masters the user turns on in the Layers list. That
+  is the same shape as a background image, a reference glyph, or an
+  onion-skin frame in a timeline: a set of read-only scenes composited
+  under the editable one. The Scene Island (D1) should take a list of
+  reference scenes, not just the one it edits.
 
 ### The one-sentence conclusion
 
