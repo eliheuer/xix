@@ -37,6 +37,14 @@ impl Default for Gap {
     }
 }
 
+impl From<crate::kernel::Space> for Gap {
+    fn from(space: crate::kernel::Space) -> Self {
+        Self {
+            gap: space.length(),
+        }
+    }
+}
+
 impl From<Length> for Gap {
     fn from(gap: Length) -> Self {
         Self { gap }

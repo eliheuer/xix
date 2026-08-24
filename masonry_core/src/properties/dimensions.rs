@@ -96,7 +96,19 @@ impl Dimensions {
     }
 
     /// Creates new fixed [`Length`] [`Dimensions`].
-    pub const fn fixed(width: Length, height: Length) -> Self {
+    ///
+    /// Takes anything that converts into a [`Length`], including the
+    /// [`kernel`](crate::kernel) scale: `Dimensions::fixed(Size::Icon,
+    /// Size::Icon)`.
+    pub fn fixed(width: impl Into<Length>, height: impl Into<Length>) -> Self {
+        Self {
+            width: Dim::Fixed(width.into()),
+            height: Dim::Fixed(height.into()),
+        }
+    }
+
+    /// Creates new fixed [`Length`] [`Dimensions`], in a const context.
+    pub const fn fixed_px(width: Length, height: Length) -> Self {
         Self {
             width: Dim::Fixed(width),
             height: Dim::Fixed(height),

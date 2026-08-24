@@ -94,5 +94,6 @@ mod passes;
 
 pub mod app;
 pub mod core;
+pub mod kernel;
 pub mod layout;
 pub mod properties;

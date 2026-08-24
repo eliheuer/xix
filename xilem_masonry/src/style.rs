@@ -107,11 +107,13 @@ pub trait Style<State: 'static, Action: 'static>: WidgetView<State, Action> + Si
     }
 
     /// Sets the element's border width.
-    fn border_width(self, width: Length) -> Prop<BorderWidth, Self, State, Action>
+    fn border_width(self, width: impl Into<Length>) -> Prop<BorderWidth, Self, State, Action>
     where
         Self::Widget: UsesProperty<BorderWidth>,
     {
-        self.prop(BorderWidth { width })
+        self.prop(BorderWidth {
+            width: width.into(),
+        })
     }
 
     /// Sets the element's box shadow.
@@ -123,11 +125,13 @@ pub trait Style<State: 'static, Action: 'static>: WidgetView<State, Action> + Si
     }
 
     /// Sets the element's corner radius.
-    fn corner_radius(self, radius: Length) -> Prop<CornerRadius, Self, State, Action>
+    fn corner_radius(self, radius: impl Into<Length>) -> Prop<CornerRadius, Self, State, Action>
     where
         Self::Widget: UsesProperty<CornerRadius>,
     {
-        self.prop(CornerRadius { radius })
+        self.prop(CornerRadius {
+            radius: radius.into(),
+        })
     }
 
     /// Sets the element's padding.

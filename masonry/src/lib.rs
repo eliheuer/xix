@@ -220,7 +220,7 @@ pub mod widgets;
 pub use accesskit;
 pub use masonry_core::imaging;
 pub use masonry_core::palette;
-pub use masonry_core::{app, core, dpi, kurbo, layout, parley, peniko, ui_events, util};
+pub use masonry_core::{app, core, dpi, kernel, kurbo, layout, parley, peniko, ui_events, util};
 #[cfg(any(feature = "testing", test))]
 pub use masonry_testing as testing;
 pub use parley::{Alignment as TextAlign, AlignmentOptions as TextAlignOptions};
