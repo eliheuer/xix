@@ -8,12 +8,19 @@
 //! content area, an inspector of fields, and a status bar. It is the shape
 //! of a font editor, a node editor, an asset browser, or an admin tool.
 //!
-//! Every spacing, control size, radius, border, and type value comes from
-//! [`xilem::kernel`]. `Space::Md`, not 8. `ControlSize::Row`, not 22.
-//! `TextSize::Body`, not 12. Three numbers remain in the file (two pane
-//! widths and a thumbnail height), and they are the whole of the app's own
-//! geometry. That is the point: a screen written this way cannot drift,
-//! because there is nothing to drift to.
+//! No container in it states a measurement. A container states what it is,
+//! and the spacing follows: `column(Region::Panel, ..)`,
+//! `row(Region::Toolbar, ..)`, `column(Region::List, rows)`. Sizes, radii,
+//! and type are kernel steps, never numbers. Three numbers remain in the
+//! whole file (two pane widths and a thumbnail height), and they are the
+//! application's own geometry.
+//!
+//! That is the point, and it is measured: written with the scale alone,
+//! this screen made 21 spacing decisions. Written with regions it makes
+//! two, both of them `Space::None` on the seams between panes, which says
+//! there is no gap rather than guessing how big one should be. The way to
+//! stop an interface drifting is not to document the right value. It is to
+//! stop asking for one.
 //! An author who wants a gap picks a step; there is no value between the
 //! steps to pick by accident, so a hundred independent choices still land
 //! on one rhythm.
@@ -22,11 +29,12 @@
 //! for a hex value, so a theme is data and the screen restyles without an
 //! edit. See `tokens.rs` for that idea driven live by sliders.
 //!
-//! Try it: change `Space::Md` to `Space::Lg` on line one of `sidebar` and
-//! watch the whole column re-space consistently. Then try to make it look
+//! Try it: change a container's region from `Region::Section` to
+//! `Region::Card` and watch that group re-space and take an inset, in
+//! proportion with everything around it. Then try to make the screen look
 //! wrong without leaving the vocabulary.
 
-use masonry::kernel::{ControlSize, Radius, Space, Stroke, TextSize};
+use masonry::kernel::{ControlSize, Radius, Region, Space, Stroke, TextSize};
 use masonry::layout::Dim;
 use masonry::properties::Dimensions;
 use masonry::properties::types::CrossAxisAlignment;
@@ -35,7 +43,8 @@ use winit::dpi::LogicalSize;
 use winit::error::EventLoopError;
 use xilem::style::Style;
 use xilem::view::{
-    FlexExt as _, FlexSpacer, button, flex_col, flex_row, label, portal, sized_box, text_input,
+    FlexExt as _, FlexSpacer, button, column, flex_col, flex_row, label, portal, row, sized_box,
+    text_input,
 };
 use xilem::{Color, EventLoop, EventLoopBuilder, WidgetView, WindowOptions, Xilem};
 
@@ -112,7 +121,12 @@ fn section_header(text: &'static str) -> impl WidgetView<App> + use<> {
 }
 
 /// A list row: label left, count right, accent outline when it is current.
-fn list_row(index: usize, text: &'static str, count: &'static str, active: bool) -> impl WidgetView<App> + use<> {
+fn list_row(
+    index: usize,
+    text: &'static str,
+    count: &'static str,
+    active: bool,
+) -> impl WidgetView<App> + use<> {
     let (fg, border) = if active {
         (color(Role::Accent), color(Role::Accent))
     } else {
@@ -123,7 +137,9 @@ fn list_row(index: usize, text: &'static str, count: &'static str, active: bool)
             flex_row((
                 label(text).text_size(TextSize::Body).color(fg),
                 FlexSpacer::Flex(1.0),
-                label(count).text_size(TextSize::Body).color(color(Role::Muted)),
+                label(count)
+                    .text_size(TextSize::Body)
+                    .color(color(Role::Muted)),
             ))
             .cross_axis_alignment(CrossAxisAlignment::Center),
             move |app: &mut App| app.selected = index,
@@ -141,26 +157,36 @@ fn field<F>(name: &'static str, value: String, set: F) -> impl WidgetView<App> +
 where
     F: Fn(&mut App, String) + Send + Sync + 'static,
 {
-    flex_col((
-        label(name).text_size(TextSize::Caption).color(color(Role::Muted)),
-        sized_box(
-            text_input(value, set)
-                .background_color(color(Role::Field))
-                .corner_radius(Radius::Sm),
-        )
-        .dims(Dimensions::new(Dim::Stretch, Dim::from(ControlSize::Control))),
-    ))
-    .cross_axis_alignment(CrossAxisAlignment::Start)
-    .gap(Space::Xs)
+    column(
+        Region::List,
+        (
+            label(name)
+                .text_size(TextSize::Caption)
+                .color(color(Role::Muted)),
+            sized_box(
+                text_input(value, set)
+                    .background_color(color(Role::Field))
+                    .corner_radius(Radius::Sm),
+            )
+            .dims(Dimensions::new(
+                Dim::Stretch,
+                Dim::from(ControlSize::Control),
+            )),
+        ),
+    )
 }
 
 /// A read-only row: name left, value right.
 fn kv(name: &'static str, value: &'static str) -> impl WidgetView<App> + use<> {
     sized_box(
         flex_row((
-            label(name).text_size(TextSize::Body).color(color(Role::Muted)),
+            label(name)
+                .text_size(TextSize::Body)
+                .color(color(Role::Muted)),
             FlexSpacer::Flex(1.0),
-            label(value).text_size(TextSize::Body).color(color(Role::Text)),
+            label(value)
+                .text_size(TextSize::Body)
+                .color(color(Role::Text)),
         ))
         .cross_axis_alignment(CrossAxisAlignment::Center),
     )
@@ -188,21 +214,31 @@ fn action(text: &'static str, primary: bool) -> impl WidgetView<App> + use<> {
 /// A card in the content grid.
 fn card(title: &'static str, meta: &'static str, accent: Role) -> impl WidgetView<App> + use<> {
     sized_box(
-        flex_col((
-            sized_box(label(""))
-                .dims(Dimensions::new(Dim::Stretch, Dim::Fixed(masonry::layout::Length::px(72.0))))
-                .background_color(color(accent))
-                .corner_radius(Radius::Sm),
-            label(title).text_size(TextSize::Body).color(color(Role::Text)),
-            label(meta).text_size(TextSize::Caption).color(color(Role::Muted)),
-        ))
-        .cross_axis_alignment(CrossAxisAlignment::Start)
-        .gap(Space::Xs)
-        .padding(Space::Md)
+        column(
+            Region::Card,
+            (
+                sized_box(label(""))
+                    .dims(Dimensions::new(
+                        Dim::Stretch,
+                        Dim::Fixed(masonry::layout::Length::px(72.0)),
+                    ))
+                    .background_color(color(accent))
+                    .corner_radius(Radius::Sm),
+                label(title)
+                    .text_size(TextSize::Body)
+                    .color(color(Role::Text)),
+                label(meta)
+                    .text_size(TextSize::Caption)
+                    .color(color(Role::Muted)),
+            ),
+        )
         .background_color(color(Role::Panel))
         .corner_radius(Radius::Lg),
     )
-    .dims(Dimensions::new(Dim::Fixed(masonry::layout::Length::px(168.0)), Dim::Auto))
+    .dims(Dimensions::new(
+        Dim::Fixed(masonry::layout::Length::px(168.0)),
+        Dim::Auto,
+    ))
 }
 
 // ---------------------------------------------------------------- panes
@@ -213,16 +249,18 @@ fn header(app: &App) -> impl WidgetView<App> + use<> {
     } else {
         ("Saved", color(Role::Muted))
     };
-    flex_row((
-        label("Asset library").text_size(TextSize::Title).color(color(Role::Text)),
-        FlexSpacer::Flex(1.0),
-        label(state).text_size(TextSize::Body).color(state_color),
-        action("Import", false),
-        action("Publish", true),
-    ))
-    .cross_axis_alignment(CrossAxisAlignment::Center)
-    .gap(Space::Md)
-    .padding(Space::Md)
+    row(
+        Region::Toolbar,
+        (
+            label("Asset library")
+                .text_size(TextSize::Title)
+                .color(color(Role::Text)),
+            FlexSpacer::Flex(1.0),
+            label(state).text_size(TextSize::Body).color(state_color),
+            action("Import", false),
+            action("Publish", true),
+        ),
+    )
     .background_color(color(Role::Panel))
 }
 
@@ -239,91 +277,114 @@ fn sidebar(app: &App) -> impl WidgetView<App> + use<> {
                     row
                 })
                 .collect();
-            flex_col((
-                section_header(title),
-                flex_col(rows)
-                    .cross_axis_alignment(CrossAxisAlignment::Start)
-                    .gap(Space::Xs),
-            ))
-            .cross_axis_alignment(CrossAxisAlignment::Start)
-            .gap(Space::Sm)
+            column(
+                Region::Section,
+                (section_header(title), column(Region::List, rows)),
+            )
         })
         .collect();
-    flex_col((
-        sized_box(
-            text_input(app.search.clone(), |app: &mut App, v| app.search = v)
-                .placeholder("Search")
-                .background_color(color(Role::Field))
-                .corner_radius(Radius::Sm),
-        )
-        .dims(Dimensions::new(Dim::Stretch, Dim::from(ControlSize::Control))),
-        portal(
-            flex_col(sections)
-                .cross_axis_alignment(CrossAxisAlignment::Start)
-                .gap(Space::Lg),
-        )
-        .flex(1.0),
-    ))
-    .cross_axis_alignment(CrossAxisAlignment::Start)
-    .gap(Space::Md)
-    .padding(Space::Md)
+    column(
+        Region::Panel,
+        (
+            sized_box(
+                text_input(app.search.clone(), |app: &mut App, v| app.search = v)
+                    .placeholder("Search")
+                    .background_color(color(Role::Field))
+                    .corner_radius(Radius::Sm),
+            )
+            .dims(Dimensions::new(
+                Dim::Stretch,
+                Dim::from(ControlSize::Control),
+            )),
+            portal(column(Region::Panel, sections)).flex(1.0),
+        ),
+    )
     .background_color(color(Role::Panel))
 }
 
 fn content() -> impl WidgetView<App> + use<> {
-    let row_one = flex_row((
-        card("Hero banner", "3200 x 1400", Role::Accent),
-        card("Product shot", "2048 x 2048", Role::Warning),
-        card("Team photo", "1600 x 900", Role::Line),
-    ))
-    .gap(Space::Md);
-    let row_two = flex_row((
-        card("Icon set", "48 files", Role::Line),
-        card("Typography", "12 files", Role::Accent),
-        card("Brand marks", "9 files", Role::Warning),
-    ))
-    .gap(Space::Md);
-    portal(
-        flex_col((row_one, row_two))
-            .cross_axis_alignment(CrossAxisAlignment::Start)
-            .gap(Space::Md)
-            .padding(Space::Lg),
-    )
+    let row_one = row(
+        Region::Section,
+        (
+            card("Hero banner", "3200 x 1400", Role::Accent),
+            card("Product shot", "2048 x 2048", Role::Warning),
+            card("Team photo", "1600 x 900", Role::Line),
+        ),
+    );
+    let row_two = row(
+        Region::Section,
+        (
+            card("Icon set", "48 files", Role::Line),
+            card("Typography", "12 files", Role::Accent),
+            card("Brand marks", "9 files", Role::Warning),
+        ),
+    );
+    portal(column(Region::Panel, (row_one, row_two)))
 }
 
 fn inspector(app: &App) -> impl WidgetView<App> + use<> {
-    flex_col((
-        section_header("Asset"),
-        field("Name", app.name.clone(), |app: &mut App, v| {
-            app.name = v;
-            app.dirty = true;
-        }),
-        field("Width", app.width.clone(), |app: &mut App, v| {
-            app.width = v;
-            app.dirty = true;
-        }),
-        kv("Format", "PNG"),
-        kv("Size", "4.2 MB"),
-        kv("Modified", "Today"),
-        section_header("Publishing"),
-        kv("Channel", "Web"),
-        kv("Status", "Draft"),
-        action("Preview", false),
-    ))
-    .cross_axis_alignment(CrossAxisAlignment::Start)
-    .gap(Space::Md)
-    .padding(Space::Lg)
+    column(
+        Region::Panel,
+        (
+            column(
+                Region::Section,
+                (
+                    section_header("Asset"),
+                    column(
+                        Region::Form,
+                        (
+                            field("Name", app.name.clone(), |app: &mut App, v| {
+                                app.name = v;
+                                app.dirty = true;
+                            }),
+                            field("Width", app.width.clone(), |app: &mut App, v| {
+                                app.width = v;
+                                app.dirty = true;
+                            }),
+                        ),
+                    ),
+                    column(
+                        Region::List,
+                        (
+                            kv("Format", "PNG"),
+                            kv("Size", "4.2 MB"),
+                            kv("Modified", "Today"),
+                        ),
+                    ),
+                ),
+            ),
+            column(
+                Region::Section,
+                (
+                    section_header("Publishing"),
+                    column(Region::List, (kv("Channel", "Web"), kv("Status", "Draft"))),
+                    // A column stretches its children, and there is no way
+                    // to say "hug" on one child, so a spacer does it. See
+                    // DESIGN.md D15.
+                    row(
+                        Region::Inline,
+                        (action("Preview", false), FlexSpacer::Flex(1.0)),
+                    ),
+                ),
+            ),
+        ),
+    )
     .background_color(color(Role::Panel))
 }
 
 fn status() -> impl WidgetView<App> + use<> {
-    flex_row((
-        label("862 assets").text_size(TextSize::Caption).color(color(Role::Muted)),
-        FlexSpacer::Flex(1.0),
-        label("Connected").text_size(TextSize::Caption).color(color(Role::Muted)),
-    ))
-    .cross_axis_alignment(CrossAxisAlignment::Center)
-    .padding(Space::Md)
+    row(
+        Region::Toolbar,
+        (
+            label("862 assets")
+                .text_size(TextSize::Caption)
+                .color(color(Role::Muted)),
+            FlexSpacer::Flex(1.0),
+            label("Connected")
+                .text_size(TextSize::Caption)
+                .color(color(Role::Muted)),
+        ),
+    )
     .background_color(color(Role::Panel))
 }
 
@@ -362,8 +423,8 @@ pub(crate) fn run(event_loop: EventLoopBuilder) -> Result<(), EventLoopError> {
         width: "3200".into(),
         dirty: false,
     };
-    let window_options = WindowOptions::new("Asset library")
-        .with_initial_inner_size(LogicalSize::new(1080., 680.));
+    let window_options =
+        WindowOptions::new("Asset library").with_initial_inner_size(LogicalSize::new(1080., 680.));
     Xilem::new_simple(app, app_logic, window_options)
         .with_default_properties(default_property_set())
         .with_default_base_color(color(Role::App))

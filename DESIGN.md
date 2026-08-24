@@ -922,6 +922,118 @@ Two things this settles, and one it does not:
   body text beside them. This is D11's third finding, and the fix is an
   inherited text style rather than a wider `Theme`.
 
+### D15. How agent-written screens come out good, by construction
+
+This is the question the whole fork answers, so it gets a mechanism, not
+a principle. The mechanism is one sentence: **remove the decision, do not
+document it.** If a value can be derived from context, the API must not
+accept it. Every layer below is an application of that sentence, and the
+test for each is the same: after this layer exists, what is an agent
+still free to get wrong?
+
+**Layer 1, the scale. Landed.** `Space`, `ControlSize`, `Stroke`,
+`Radius`, `TextSize`. Removes the values between the steps. What an agent
+can still get wrong: which step. Twenty spacing values became seven.
+
+**Layer 2, regions. Landed.** A container states what it is, not what it
+measures: `column(Region::Panel, ..)`, `row(Region::Toolbar, ..)`,
+`column(Region::List, rows)`. The gap and the inset come from the kind.
+This removes the remaining choice, because "how much space between a
+toolbar's buttons" does not vary per screen, and an author who is asked
+anyway will answer differently each time. Rebuilding `app_shell.rs` on
+regions took its spacing decisions from 21 to 2, and the two that remain
+are `Space::None` on the seams between panes, which is a statement that
+there is no gap rather than a guess about how big one is.
+
+Two rules make regions compose without a margin conversation:
+
+- A region that paints nothing has no inset. A form inside a panel does
+  not double the panel's padding. This is the whole of the margin
+  question, answered once in `Region::inset` rather than argued per
+  element. Elements have no outer margin at all; there is no such
+  property to set.
+- An outer region's gap is never smaller than an inner region's gap, so
+  grouping reads as grouping at every depth. This is a unit test, and it
+  caught the first version of the table putting a toolbar inside a card.
+
+**Layer 3, the theme. Landed.** `masonry::theme::Theme` holds the role
+colors and the kernel steps every built-in widget styles itself from, so
+one value restyles the whole widget set. A view asks for a role and never
+for a color. What is still missing here is inherited text style, which is
+why built-in labels are still a size larger than the body text beside
+them.
+
+**Layer 4, the parts. Next.** The recipes an application repeats: list
+row, field, section header, toolbar, panel, card, dialog, and the four
+hard ones (text input, slider, resizable split, menu). Every part is
+built from the layers above, so a part cannot be off the scale, and an
+application that uses parts is drift-proof without trying. The rule from
+D11 stands: a part graduates from an application into the framework when
+a second application needs the same one.
+
+**Layer 5, enforcement. Next.** Three tools, all of which exist to make a
+mistake loud instead of invisible:
+
+- `xix lint`: raw pixel outside a pane geometry, second primary action in
+  one region, hit target under the minimum, contrast pair that fails,
+  region nested inside a tighter one, text clipped by a fixed height.
+- `xix dump`: the widget tree with resolved tokens, so an agent can read
+  back what it actually built instead of guessing from its own source.
+- Headless screenshots (landed): the agent renders a PNG and looks at it.
+  Every visual decision in this fork so far was made that way.
+
+**The files a design engineer owns.** The point of the layers is that the
+application's code does not carry appearance, so appearance can live in
+data the agent never edits:
+
+```
+xix.toml         # density, font stack, motion, platform behavior
+theme.toml       # role seeds in OKLCH, contrast targets, per-role overrides
+```
+
+A theme file states seeds and rules, not a value per widget: an accent
+hue, a surface lightness ramp, a contrast floor. The build resolves those
+into a `Theme` and fails on a pair that cannot meet the floor, which is
+the same discipline the kernel applies to spacing. Live reload of both is
+data reload, not code reload, so it stays inside D2's "live editing is for
+data" line.
+
+**What the agent is told.** One `LLMS.md` in the repository, holding the
+whole vocabulary and nothing else: the five scales, the region list, the
+role list, the parts list, and the three commands. The instruction to an
+agent is not "use 8px gaps"; it is "containers are regions, colors are
+roles, sizes are steps, and `xix lint` has to pass". That fits in a
+prompt, which is the actual constraint.
+
+**The honest remainder.** After all five layers, an agent can still choose
+the wrong region for a container, the wrong role for a color, and a bad
+information hierarchy. Those are design judgments, and no framework
+removes them. What the layers remove is the class of defect that makes
+agent output look unfinished even when the judgment was fine: the 13 px
+padding, the three button heights, the doubled margin, the accent that
+does not match the accent two panels over.
+
+### D16. Smaller findings from the region pass
+
+- The generics complaint in D11 was harsher than the truth. Writing a
+  reusable container helper fails on a missing bound, but the bound is
+  `Seq: Send + Sync`, not the associated-type incantation the app ended up
+  with. It is discoverable, but not from the error, which lists unrelated
+  types that implement the trait. The fix is a better diagnostic, not a
+  redesign.
+
+- A helper that returns `impl WidgetView` is unstyleable by its caller.
+  `column(Region::Panel, ..)` still has to accept a background and a
+  corner, so the return type is named (`RegionStack`) rather than hidden.
+  Any part the framework ships has to make the same choice, and hiding the
+  type is the wrong half of it.
+
+- Stretch has no per-child opt-out. A column stretches its children, which
+  is right for rows and wrong for a button, and there is no way to say
+  "hug" on one child: `Dim::Auto` means "let the container decide", and the
+  container decided. `app_shell.rs` works around it with a spacer. A `Hug`
+  that resists a stretching parent is missing from `Dim`.
+
 ### The one-sentence conclusion
 
 xix is not a reactive-architecture bet; it is a Scene Island substrate

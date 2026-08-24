@@ -24,6 +24,10 @@
 //! other escape hatches exist for the case the scale genuinely cannot
 //! express, and are meant to be rare enough to grep for.
 
+mod region;
+
+pub use region::Region;
+
 use crate::layout::{Dim, Length};
 use crate::properties::Padding;
 
