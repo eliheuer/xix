@@ -109,6 +109,15 @@ required-features = ["web"]
 name = "app_shell"
 
 [[example]]
+name = "shapes"
+
+[[example]]
+name = "shapes_web"
+path = "examples/shapes.rs"
+crate-type = ["cdylib"]
+required-features = ["web"]
+
+[[example]]
 name = "app_shell_web"
 path = "examples/app_shell.rs"
 crate-type = ["cdylib"]
