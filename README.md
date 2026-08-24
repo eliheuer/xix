@@ -45,8 +45,9 @@ Three examples are worth reading first:
 | Example | What it shows |
 |---|---|
 | `app_shell` | A whole desktop screen (sidebar, content, inspector, status bar) with the kernel and no loose numbers |
-| `tokens` | Density, radius, and hue as sliders: a theme is data, and the views never change |
-| `canvas` | A retained, GPU-drawn surface inside the widget tree |
+| `shapes` | A small graphics editor on `island`: draw, select, drag, pan, zoom, with no viewport math in the file |
+| `tokens` | Density, roundness, and hue as sliders: the same tokens, resolved by a theme, restyle a working panel |
+| `canvas` | A plain retained drawing surface, without the island's gestures |
 
 Add `XIX_SCREENSHOT=out.png` and the `screenshot` feature to render any
 example headlessly, with no window:

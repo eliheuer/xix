@@ -861,6 +861,35 @@ What the pass found:
   everywhere at once. That resolution path (D9's theme-context finding)
   is the next piece.
 
+### D13. What the examples found
+
+The examples are the test bed for these decisions, so what they resist is
+evidence. Three things came out of writing them.
+
+- A theme resolves the kernel, and the two are different jobs. The enums
+  fix the vocabulary; a theme decides what a step is worth. `tokens.rs`
+  drives density, roundness, and hue from sliders, and the panel under
+  them re-spaces without a line changing. It also shows why one global
+  multiplier is wrong: spacing scales fully with density, control heights
+  scale less (a hit target that follows spacing down stops being
+  hittable), and text does not scale at all. A theme knows that. A
+  stylesheet with one scale factor cannot.
+
+- Controls that hold text have a floor, and nothing enforces it. Give a
+  text input a fixed height under its line height and it clips the
+  descenders silently, with no warning at any layer. `tokens.rs` works
+  around it by clamping in the theme, which is the wrong place: the
+  widget knows its text metrics, so the minimum belongs to the widget and
+  the fixed size should be negotiated against it, not obeyed.
+
+- The island is the shape D1 predicted. `shapes.rs` is a working editor
+  (draw, select, drag, inspector fields, pan, zoom) with no viewport math
+  in it, because the widget owns the view and reports gestures already in
+  document coordinates. The parts the application still writes are hit
+  testing and a small gesture enum, and both are genuinely its own. The
+  next thing the island needs is reference scenes (D10) and a tool
+  delegate, so the gesture enum stops being per-app boilerplate.
+
 ### The one-sentence conclusion
 
 xix is not a reactive-architecture bet; it is a Scene Island substrate
