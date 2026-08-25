@@ -1034,6 +1034,156 @@ does not match the accent two panels over.
   container decided. `app_shell.rs` works around it with a spacer. A `Hug`
   that resists a stretching parent is missing from `Dim`.
 
+### D17. The theme system, and who is allowed to decide what
+
+The kernel and the regions make an interface consistent. They do not
+make it *yours*. If the fork's claim is that a design engineer directs
+the product while an agent types, then there has to be a surface where
+the design engineer decides, and it has to be a surface the agent
+cannot overwrite by accident. That surface is the theme.
+
+**The principle: separation of authority.** Appearance is not
+expressible in application code. Not discouraged, not linted after the
+fact where possible, but absent from the vocabulary. Application code
+can say `Region::Panel`, `Role::Accent`, `TextSize::Body`. It cannot say
+12, `#3b7ee4`, or "make this one a bit tighter". Everything that decides
+what those names resolve to lives in theme data.
+
+This is a stronger claim than "we ship design tokens", and it is the
+claim that makes the workflow work. If appearance can be set in code,
+an agent will set it, because an agent will use whatever the API
+offers, and then the design engineer's file no longer controls the
+product. The rule has to be structural or it is not a rule.
+
+It also gives each participant one surface:
+
+| | Surface | Changes |
+|---|---|---|
+| The agent | application code | structure, behavior, data |
+| The design engineer | `theme.toml`, `xix.toml` | how all of it looks and feels |
+| The user of the app | the same files, shipped as data | their own preferences |
+
+**A theme is more than a palette.** Zed's JSON themes and
+`gpui-component`'s schema are color maps: they reskin a fixed widget
+set. That is a real feature and not the one we need. A design engineer
+changing a product's character changes its rhythm, its density, its
+type, and its motion, not only its hues. So a xix theme carries:
+
+- **Color**: a few OKLCH seeds, a generated ramp per seed, and the role
+  table mapping roles to steps on those ramps. Contrast floors are
+  stated in the file and checked when it loads.
+- **Density**: how the kernel steps resolve. Spacing scales with
+  density, control sizes scale less, text does not scale (D13).
+- **The region table**: the gap and inset for each region, as steps.
+  This is the part no other system exposes, and it is the part that
+  decides whether the product reads as dense and technical or open and
+  calm.
+- **Type**: family, the size steps, weight per role, and the metric
+  rules (cap-height centering, ink-to-ink spacing).
+- **Shape and stroke**: the radius steps, border widths, and whether
+  nested corners recompute.
+- **Motion**: durations and curves by role (a menu opening is not a
+  value changing).
+
+**Resolution model.** Three layers, resolved in one pass, with no
+selector engine:
+
+1. The theme's own values.
+2. Per widget type, plus state variants: hover, active, focus,
+   disabled, selected. Masonry already has this as property stacks with
+   `Selector`, so the theme file is the authoring surface for something
+   the engine can do today.
+3. Per instance, from application code, and only in the vocabulary.
+
+Inheritance is limited and explicit. A small set of properties inherits
+down the tree (text style, content color, density, accent), everything
+else resets, which is the distinction CSS draws between inherited and
+reset properties and the one place its model earned its keep. The
+resolved value for a widget is a small struct grouped by category, and
+identical results are shared behind an `Arc`, so a thousand list rows
+resolve once. That is Stylo's design, minus selector matching, and
+Stylo is the proof that it is affordable in Rust.
+
+**What we deliberately do not take from CSS.** No selectors, no
+specificity, no cascade order that depends on document position. Those
+are where CSS's unpredictability comes from, and they exist because CSS
+has to style documents it did not author. We author the widget tree, so
+the tree itself is the scope: a theme applies to a subtree, and a
+subtree can push a scoped theme (a danger region, a light panel in a
+dark window) that its children inherit. Scope is structural, not
+textual.
+
+**The file.** TOML, because it takes comments and the ecosystem reads
+it, with a published JSON schema so editors can complete it. Seeds and
+rules, not a value per widget:
+
+```toml
+[color]
+background = { l = 0.17, c = 0.005, h = 260 }
+accent     = { l = 0.78, c = 0.150, h = 155 }
+contrast   = { text_on_surface = 4.5, text_on_accent = 4.5 }
+
+[density]
+mode = "cozy"          # compact | cozy | comfortable
+
+[regions]
+panel   = { gap = "Lg", inset = "Lg" }
+toolbar = { gap = "Md", inset = "Md" }
+list    = { gap = "Xs", inset = "None" }
+
+[type]
+family = ["Inter", "system-ui"]
+body   = { size = "Body", weight = 400 }
+title  = { size = "Title", weight = 600 }
+```
+
+Loading validates: every role resolves, every stated contrast pair
+meets its floor, every region gap is a scale step, and the region table
+still satisfies the nesting invariant (D15). A theme that fails does
+not load with a warning; it fails with a file and a line, the same way
+a type error does.
+
+**Live, because it is data.** Theme reload is data reload, so it stays
+inside the D2 line that live editing is for data and not for code. The
+loop we want for a design engineer is: the application runs, they edit
+`theme.toml`, the window restyles. No rebuild, no agent, no diff.
+
+**Tooling that makes it checkable.**
+
+- `xix theme check <file>`: validation without running the app.
+- `xix theme preview <file>`: renders the widget gallery and one app
+  screen headlessly under that theme, to PNG. A design engineer sees
+  the whole system before shipping it, and it is a visual regression
+  test for free.
+- `xix lint`: fails on appearance expressed in application code. This
+  is the enforcement half of the separation of authority, and without
+  it the principle is a convention.
+
+**Is this Tailwind?** It is Tailwind's model with the strings removed.
+Tailwind is three things: a closed utility vocabulary, a config file
+that generates that vocabulary, and variants (`hover:`, `md:`, `dark:`)
+that apply a utility conditionally. We have the first as enums and the
+second as the theme file. The third is the missing piece, and the
+Masonry `Selector` stacks are where it lands: a state variant is
+`hover:` and a width class is `md:`. The difference that matters is
+that a Tailwind class is a string resolved by a build step, and a
+kernel token is a value the compiler checks, so the escape hatch has to
+be deliberate rather than a typo away.
+
+**Open questions.**
+
+- Where does the resolved style live: a side table keyed by widget id,
+  or a property on the widget? The side table parallelizes and the
+  property is simpler.
+- Does the region table belong in the theme file at all, or is it
+  framework policy that only density scales? Exposing it is powerful
+  and is also the fastest way for someone to make an incoherent
+  product. The invariant check is what makes exposing it survivable.
+- How far does "behavior is themeable" go? Control sizes and hit
+  targets clearly. Scroll physics and animation curves probably.
+  Keyboard behavior, no: that is the action layer, and it is a keymap
+  file, not a theme.
+
 ### The one-sentence conclusion
 
 xix is not a reactive-architecture bet; it is a Scene Island substrate

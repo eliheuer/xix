@@ -879,6 +879,237 @@ access" as the shape of the widget tree and its invalidation.
 Sources: https://bevy.org/news/bevy-0-19/,
 https://bevy.org/news/bevy-0-17/, https://bevy.org/news/bevy-0-18/
 
+## 13. What each project was trying to do, and the grain of Rust
+
+This section is the answer to a question that kept coming up while
+building the kernel: why does nobody else do it this way? The short
+answer is that everyone in this space was solving a different problem,
+and the design-system layer was nobody's problem. The long answer is
+worth having, because it also says what "with the grain of Rust" means
+concretely, and that is the load-bearing claim of the fork.
+
+### 13.1 What Xilem set out to do
+
+Xilem is a research program about **reactivity**, and it has been since
+2019. The lineage is explicit in `docs/history.md`: Druid, crochet,
+idiopath, lasagna, then Xilem. Raph Levien's "Towards a unified theory
+of reactive UI" (2019) is a taxonomy of reactive systems along axes
+(stored tree versus execution trace, push versus pull, diffing versus
+explicit deltas, node identity by object reference versus key path
+versus id), and it concludes that Rust pushes you toward stored trees,
+diffing, and key paths, because "object-oriented patterns don't
+translate well to Rust, mostly because ownership becomes tangled" when
+a widget is owned by its container and also referenced by a callback.
+
+"Xilem: an architecture for UI in Rust" (2022) states the problem as
+"architectures that work well in other languages generally don't adapt
+well to Rust, mostly because they rely on shared mutable state", and
+then rejects, in order: the observer pattern ("requires shared mutable
+access, which is clunky at best in Rust"), immediate mode, the Elm
+architecture ("the need to create an explicit message type and dispatch
+on it is verbose, and the Elm architecture does not support cleanly
+factored components"), and React-style interior mutability. What
+survives is a stateless view tree, diffed each cycle against a
+persistent widget tree, where "the state and widgets are also
+statically typed" and "the design relies heavily on the type inference
+mechanisms of the Rust compiler".
+
+That last sentence is the whole story. Xilem's bet is that the
+**structure of the reactive graph belongs in the type system**. The
+`State` generic on every view, the associated `ViewState` types, the
+`Adapt` nodes that transform state types between parent and child, and
+today's generics explosion are all consequences of that one bet, not
+accidents of implementation.
+
+Note what is not in any of these documents: styling, theming, or design
+systems. "Advice for the next dozen Rust GUIs" (2022) lists what a new
+toolkit should invest in, and the list is windowing, the system
+compositor, text ("figure out a strategy to get text right ... longer
+term it is a requirement for real UI"), and accessibility. That is a
+correct list of what is hard and shared. It is also a list with no
+design layer in it, because in 2022 the design layer was assumed to be
+the application's job.
+
+Masonry's own vision (Olivier Faure, 2023) is the layering: Masonry is
+deliberately low-level, and "the framework is not opinionated about
+what your user-facing abstraction will be: you can implement
+immediate-mode GUI, the Elm architecture, functional reactive GUI, etc,
+on top of Masonry." Again correct, and again it puts appearance outside
+the framework's remit by construction.
+
+### 13.2 What GPUI set out to do
+
+GPUI is not a research program. It is the UI layer of one commercial
+product, and its goals are that product's goals: a fast editor, shipped,
+by a team that can iterate quickly. The ownership post is unusually
+honest about the tradeoff. Capturing `self` in an event listener "is the
+opposite of straightforward" in Rust, so GPUI put every model and view
+in one `App`, handed out `Entity<T>` handles that are inert ids, and
+leases state out to the stack during updates. On reentrancy: "this does
+spell trouble if you ever attempt to update an entity reentrantly, but
+in practice we've found it quite manageable to avoid this, and it's been
+pretty quick and easy to detect when we've made errors."
+
+That is a team choosing ergonomics over compile-time proof, with eyes
+open, because they are shipping an editor rather than proving a
+property. The styled layer tells the same story from the other side.
+Zed's own themes are JSON files against a published schema
+(`zed.dev/schema/themes/v0.2.0.json`), organized as a family of
+appearances with colors for UI, syntax, editor, and terminal. That is a
+theme system for **end users reskinning one application**, not for
+application authors designing a product. And `gpui-component`, the
+60-plus component library with its own `.theme-schema.json`, was built
+by a third party (Longbridge) and extracted from their commercial app,
+in the layered shape we independently arrived at: `gpui-base` for
+behavior, a styled set above it.
+
+### 13.3 Where they disagree, and what the disagreement really is
+
+The visible disagreement is static versus dynamic typing of the view
+tree. Xilem types it and pays in generics; GPUI erases it and pays in
+runtime checks. The Xilem maintainer's 2026 review proposes moving
+Xilem toward the GPUI end: a type-erased `Component` with string keys,
+"some type checking will move from compile time to runtime".
+
+The useful framing is older than both, and it comes from functional
+programming: this is the **applicative versus monadic** tradeoff.
+Structure that is fixed up front can be analyzed, optimized, and typed;
+structure that depends on runtime values cannot, and must be discovered
+as it runs. Haskell hit this exactly with arrows and applicative parsers
+versus monadic ones, and the resolution there was not to pick a side but
+to notice that different parts of a program sit on different points of
+the axis.
+
+A UI has both parts, and the mistake is applying one answer to both:
+
+- The **widget tree and its updates are genuinely dynamic**. Which rows
+  exist, which panel is open, what the user just clicked. Encoding that
+  in types buys analysis nobody uses and costs signatures everyone
+  reads. This is where Xilem pays.
+- The **design vocabulary is genuinely static**. There are seven
+  spacing steps, nine regions, a dozen color roles, five text sizes, and
+  that set does not depend on runtime values. Encoding *this* in types
+  costs nothing at runtime, produces no generic parameters (the enums
+  are plain values, not type parameters), and buys the one thing a
+  design system needs, which is that an invalid value cannot be written
+  down. This is where nobody was.
+
+Bevy is the existence proof that you can decline the axis for the tree
+part. Ids instead of pointers, typed components in tables, change
+detection by ticks, access declared in system signatures and checked
+once when the schedule is built. Section 12 covers what transfers. The
+point here is that Bevy's answer to "how do you do a mutable object
+graph in Rust" was not a cleverer type or a runtime borrow check. It was
+to stop having an object graph.
+
+### 13.4 So what is "the grain of Rust"
+
+Stated as rules rather than vibes, and each with a Rust-ecosystem
+existence proof:
+
+1. **Ids, not pointers.** Ownership is a tree; UI is a graph. Store the
+   graph as data in an arena and address it by id. (Bevy entities,
+   Masonry's `tree_arena`, Servo's flow tree.)
+2. **Values, not references.** Anything small and copyable should be a
+   value type you can compare, hash, and cache on. Tokens are values.
+   Computed styles are values, shared behind `Arc` when they repeat.
+   (Stylo's style structs.)
+3. **Enums, not open extension.** Where the set is closed and known,
+   say so, and get exhaustive matching and impossible-state elimination
+   for free. This is where Rust is strongest and where UI toolkits use
+   it least.
+4. **Passes over the tree, not callbacks into it.** A pass has one
+   mutable borrow of the world and a clear order. Callbacks into a live
+   tree are the thing that forces `Rc<RefCell>` or a runtime lease.
+   (Masonry's pass system, Stylo's parallel style traversal.)
+5. **Change by tick, not by observer.** Writes stamp a counter, reads
+   filter on it. No dependency graph, no thread-locals, no
+   invalidation storms. (Bevy `Changed<T>`.)
+6. **Monomorphize the fixed shapes, erase the varying ones.** Use
+   generics where the shape is decided at compile time and small. Use
+   ids and messages where it is not.
+
+Point 6 is the one Xilem and GPUI each got half of. Xilem monomorphized
+the varying shape. GPUI erased the fixed one, which is why the design
+vocabulary in a GPUI app is `px_2()` and a hand-written theme struct
+rather than a checked type.
+
+### 13.5 What Haskell actually contributes here
+
+Not FRP. Higher-order FRP in the reflex style depends on garbage
+collection, laziness, and cheap closure allocation to rewire a graph at
+runtime; Floem's signals are the closest Rust analogue and they need
+thread-local storage, which breaks embedding (section 8.2). What does
+transfer is smaller and more useful:
+
+- **Make illegal states unrepresentable.** The oldest ADT discipline,
+  and Rust has the types for it. A design system is an ideal candidate:
+  there is no legal 13 px gap, so there should be no way to write one.
+- **Denotational design.** Say what a type *means* before implementing
+  it. "A region means: this container's spacing is a function of what
+  the container is for" is a meaning. "Panel gap is 12" is an
+  implementation detail that then cannot drift, because it is derived.
+- **Laws, and property tests for them.** The invariants we want are
+  algebraic: an outer gap is never smaller than an inner one; combining
+  a theme with an override is associative with an identity; a resolved
+  style is the same whether you resolve top-down in one pass or in two.
+  Those are `proptest` properties, not unit tests, and a design system
+  that satisfies them cannot produce a surprising screen.
+- **Composition as a monoid.** A cascade is `mappend` on styles. If the
+  combination is associative with an identity, nesting order stops
+  being a source of surprise. Stylo's cascade is exactly this, built at
+  browser scale, in Rust, which is the proof that it is affordable.
+
+### 13.6 Why nobody built the design layer
+
+Six reasons, in rough order of weight:
+
+1. **It was not the research question.** Xilem is about reactivity;
+   Masonry is deliberately unopinionated; the advice list for new
+   toolkits is text, a11y, compositor, windowing. All correct, none of
+   it appearance.
+2. **The one production styled set came from a product team**, and a
+   product team themes its own product. Zed's JSON themes and
+   gpui-component's schema are for reskinning a fixed widget set, not
+   for deciding a new product's rhythm.
+3. **A real cascade looks expensive.** The Rust ecosystem's example of
+   a style engine is Stylo, which is a browser CSS engine with a rule
+   tree, Arc-shared computed style structs grouped by category,
+   inheritance by default for text properties, and a thread-local style
+   sharing cache. Faced with that as the reference implementation, a
+   toolkit hardcodes defaults and moves on. Masonry did: properties are
+   per-widget with no inheritance, and `default_property_set()` was a
+   few hundred lines of literals until we made it a `Theme` value.
+4. **Neutrality is cheaper than a position.** A general framework that
+   ships a design language annoys everyone whose language differs.
+   Shipping no defaults reads as neutral, and pushes the cost onto every
+   application.
+5. **Design tokens as data are recent.** Tailwind's config-generated
+   vocabulary, the W3C design token format, and Zed-style JSON themes
+   are all newer than the architecture of most of these toolkits.
+6. **Until agents, this was a human-scale problem.** One author picking
+   values by feel is consistent enough over a few thousand lines, and
+   code review catches the rest. The cost of "every value is a
+   decision" only becomes structural when the number of decisions, and
+   the number of authors, goes up by an order of magnitude. That is the
+   actual "why now" for this fork.
+
+None of this is a competence claim about the people involved. Raph's
+2019 taxonomy *is* a grain-of-Rust analysis, and it is better than most
+of what has been written since. GPUI's team knew exactly which
+guarantee they were trading and said so in public. The gap is that no
+one in Rust GUI had a designer sitting at the table asking what happens
+to a product's appearance when nobody owns it.
+
+Sources: https://raphlinus.github.io/ui/druid/2019/11/22/reactive-ui.html,
+https://raphlinus.github.io/rust/gui/2022/05/07/ui-architecture.html,
+https://raphlinus.github.io/rust/gui/2022/07/15/next-dozen-guis.html,
+https://poignardazur.github.io/2023/02/02/masonry-01-and-my-vision-for-rust-ui/,
+https://zed.dev/blog/gpui-ownership, https://zed.dev/docs/extensions/themes,
+https://github.com/longbridge/gpui-component,
+https://hacks.mozilla.org/2017/08/inside-a-super-fast-css-engine-quantum-css-aka-stylo/,
+https://github.com/servo/stylo
+
 ## Sources
 
 - runebender-xilem: `context/*.md`, `ARCHITECTURE.md`, `LLMS.md`,
