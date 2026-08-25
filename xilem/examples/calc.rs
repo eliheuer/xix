@@ -1,87 +1,89 @@
 // Copyright 2024 the Xilem Authors
 // SPDX-License-Identifier: Apache-2.0
 
-//! A calculator.
+//! A calculator, and the shortest before-and-after in the repo.
 //!
-//! This is the upstream Xilem calculator reworked to look designed.
-//! Everything visible comes from the `tokens` module: spacing steps,
-//! radii, text sizes, and colors by role. The view code below has no
-//! raw numbers and no raw colors.
+//! An earlier version of this file carried its own `tokens` module: a
+//! spacing scale, a radius, three text sizes, and eight colors, written
+//! out as consts because the framework had none. Everything in it was
+//! generic. Nothing in it was about arithmetic. That module is gone now,
+//! and this file names framework vocabulary instead:
 //!
-//! xix note. Reworking this example forced these things, which the
-//! framework should own instead of every example:
-//! - Tokens as types: `Space`, `Radius`, `Text`, `Role` (here: consts).
-//! - Button roles (digit, operator, function, primary) with hover and
-//!   pressed colors derived from the role, not set per widget.
-//! - Relational spacing: window inset > section gap > key gap.
-//! - Text alignment to the end for a numeric display, and tabular
-//!   figures (not available yet; the display jitters as digits change).
-//! - A "display" part: a primary line and a muted secondary line.
-//! - An API trap: `label(..).color(..)` wraps the view in a style `Prop`,
-//!   after which `Label`'s own builders (`text_alignment`) are gone.
-//!   Builder order should not matter.
+//! - Measurements are [`xilem::kernel`] steps. `Radius::Lg`, not 12.
+//!   `TextSize::Display`, not 44.
+//! - Containers state what they are. `column(Region::Window, ..)` sets
+//!   the window inset and the gap between the display and the keypad;
+//!   the keypad's own gap comes from `Region::Card`. Neither is a number
+//!   this file chose, and the relationship between them (outer looser
+//!   than inner) is a framework invariant rather than this author's
+//!   judgment.
+//! - Colors are roles resolved by a [`Theme`], which also styles every
+//!   built-in widget, so the key hover and pressed states are not set per
+//!   button here.
+//!
+//! What is left in the file is a calculator: the arithmetic, the four key
+//! kinds, and which key sits where.
+//!
+//! One trap remains, and it is worth knowing about: `label(..).color(..)`
+//! wraps the view in a style `Prop`, after which `Label`'s own builders
+//! (`text_alignment`) are no longer reachable. Builder order should not
+//! matter. See DESIGN.md D11.
 
 use masonry::core::{PropertyStack, Selector};
+use masonry::kernel::{Radius, Region, TextSize};
 use masonry::properties::Dimensions;
 use masonry::properties::types::{CrossAxisAlignment, MainAxisAlignment};
-use masonry::theme::default_property_set;
+use masonry::theme::Theme;
 use winit::dpi::LogicalSize;
 use winit::error::EventLoopError;
 use xilem::style::{Background, BorderColor, Style};
 use xilem::view::{
-    FlexExt as _, GridSequence, GridTrackSize, button, flex_col, grid, label, repeat_tracks,
+    FlexExt as _, GridSequence, GridTrackSize, button, column, flex_col, grid, label, repeat_tracks,
 };
 use xilem::{Color, EventLoop, EventLoopBuilder, TextAlign, WidgetView, WindowOptions, Xilem};
 
-/// Design tokens. The only place in this file where a number or a color is written.
-mod tokens {
-    use masonry::layout::Length;
+/// The palette, as roles. A theme built from these also styles the
+/// built-in widgets, so the two cannot disagree.
+mod role {
     use xilem::Color;
 
-    /// Spacing scale, 4 pt base.
-    pub(crate) mod space {
-        use super::Length;
-        pub(crate) const XS: Length = Length::const_px(4.);
-        pub(crate) const S: Length = Length::const_px(8.);
-        pub(crate) const M: Length = Length::const_px(12.);
-        pub(crate) const L: Length = Length::const_px(20.);
+    fn oklch(l: f32, c: f32, h: f32) -> Color {
+        use masonry::peniko::color::{AlphaColor, Oklch, Srgb};
+        AlphaColor::<Oklch>::new([l, c, h, 1.0]).convert::<Srgb>()
     }
 
-    pub(crate) mod radius {
-        use super::Length;
-        pub(crate) const M: Length = Length::const_px(12.);
+    pub(crate) fn surface() -> Color {
+        oklch(0.17, 0.005, 260.0)
     }
-
-    /// Text sizes, in px.
-    pub(crate) mod text {
-        pub(crate) const DISPLAY: f32 = 44.;
-        pub(crate) const SECONDARY: f32 = 18.;
-        pub(crate) const KEY: f32 = 20.;
+    pub(crate) fn text() -> Color {
+        oklch(0.96, 0.004, 260.0)
     }
-
-    /// Colors by role.
-    pub(crate) mod role {
-        use super::Color;
-        pub(crate) const SURFACE: Color = Color::from_rgb8(0x15, 0x15, 0x17);
-        pub(crate) const TEXT: Color = Color::from_rgb8(0xf4, 0xf4, 0xf5);
-        pub(crate) const TEXT_MUTED: Color = Color::from_rgb8(0x8f, 0x8f, 0x97);
-
-        /// Digit keys.
-        pub(crate) const KEY: Color = Color::from_rgb8(0x2a, 0x2a, 0x2e);
-        /// Function keys: clear, delete, negate.
-        pub(crate) const KEY_FUNCTION: Color = Color::from_rgb8(0x3a, 0x3a, 0x40);
-        /// Operator keys.
-        pub(crate) const KEY_OPERATOR: Color = Color::from_rgb8(0x3b, 0x6e, 0xc4);
-        /// The primary action: equals.
-        pub(crate) const KEY_PRIMARY: Color = Color::from_rgb8(0xe0, 0x8a, 0x3c);
-
-        /// Hover and pressed states are the same overlay for every key role.
-        pub(crate) const KEY_HOVER_BORDER: Color = Color::from_rgba8(0xff, 0xff, 0xff, 0x40);
-        pub(crate) const KEY_PRESSED: Color = Color::from_rgba8(0xff, 0xff, 0xff, 0x24);
+    pub(crate) fn text_muted() -> Color {
+        oklch(0.70, 0.012, 260.0)
+    }
+    /// Digit keys.
+    pub(crate) fn key() -> Color {
+        oklch(0.28, 0.008, 260.0)
+    }
+    /// Function keys: clear, delete, negate.
+    pub(crate) fn key_function() -> Color {
+        oklch(0.36, 0.012, 260.0)
+    }
+    /// Operator keys.
+    pub(crate) fn key_operator() -> Color {
+        oklch(0.55, 0.130, 255.0)
+    }
+    /// The primary action: equals.
+    pub(crate) fn key_primary() -> Color {
+        oklch(0.75, 0.140, 65.0)
+    }
+    pub(crate) fn key_hover_border() -> Color {
+        text().with_alpha(0.25)
+    }
+    pub(crate) fn key_pressed() -> Color {
+        text().with_alpha(0.14)
     }
 }
-
-use tokens::{radius, role, space, text};
 
 #[derive(Copy, Clone)]
 enum MathOperator {
@@ -300,10 +302,10 @@ enum KeyRole {
 impl KeyRole {
     fn color(self) -> Color {
         match self {
-            Self::Digit => role::KEY,
-            Self::Function => role::KEY_FUNCTION,
-            Self::Operator => role::KEY_OPERATOR,
-            Self::Primary => role::KEY_PRIMARY,
+            Self::Digit => role::key(),
+            Self::Function => role::key_function(),
+            Self::Operator => role::key_operator(),
+            Self::Primary => role::key_primary(),
         }
     }
 }
@@ -314,10 +316,13 @@ fn key(
     key_role: KeyRole,
     callback: impl Fn(&mut Calculator) + Send + Sync + 'static,
 ) -> impl WidgetView<Calculator> {
-    button(label(text).text_size(text::KEY).color(role::TEXT), callback)
-        .dims(Dimensions::STRETCH)
-        .background_color(key_role.color())
-        .corner_radius(radius::M)
+    button(
+        label(text).text_size(TextSize::Heading).color(role::text()),
+        callback,
+    )
+    .dims(Dimensions::STRETCH)
+    .background_color(key_role.color())
+    .corner_radius(Radius::Lg)
 }
 
 fn digit(digit: &'static str) -> impl WidgetView<Calculator> {
@@ -344,18 +349,18 @@ fn digit_row(nums: [&'static str; 3]) -> impl GridSequence<Calculator> {
 fn display(data: &Calculator) -> impl WidgetView<Calculator> + use<> {
     flex_col((
         label(data.expression_text())
-            .text_size(text::SECONDARY)
+            .text_size(TextSize::Heading)
             .text_alignment(TextAlign::End)
-            .color(role::TEXT_MUTED),
+            .color(role::text_muted()),
         label(data.entry_text())
-            .text_size(text::DISPLAY)
+            .text_size(TextSize::Display)
             .text_alignment(TextAlign::End)
-            .color(role::TEXT),
+            .color(role::text()),
     ))
     .cross_axis_alignment(CrossAxisAlignment::End)
     .main_axis_alignment(MainAxisAlignment::End)
-    .gap(space::XS)
-    .padding(space::M)
+    .gap(Region::List.gap())
+    .padding(Region::Card.inset())
 }
 
 fn keypad(data: &Calculator) -> impl WidgetView<Calculator> + use<> {
@@ -388,13 +393,14 @@ fn keypad(data: &Calculator) -> impl WidgetView<Calculator> + use<> {
     ))
     .columns(repeat_tracks(4, GridTrackSize::FRACTION))
     .rows(repeat_tracks(5, GridTrackSize::FRACTION))
-    .gap(space::S)
+    .gap(Region::Card.gap())
 }
 
 fn app_logic(data: &mut Calculator) -> impl WidgetView<Calculator> + use<> {
-    flex_col((display(data).flex(1.), keypad(data).flex(2.5)))
-        .gap(space::M)
-        .padding(space::L)
+    column(
+        Region::Window,
+        (display(data).flex(1.), keypad(data).flex(2.5)),
+    )
 }
 
 pub(crate) fn run(event_loop: EventLoopBuilder) -> Result<(), EventLoopError> {
@@ -406,18 +412,31 @@ pub(crate) fn run(event_loop: EventLoopBuilder) -> Result<(), EventLoopError> {
         operation: None,
     };
 
-    // Key states: no resting border, a light border on hover, a light overlay when pressed.
-    // TODO(xix): this belongs to a button role in the theme, not to the app.
-    let mut default_properties = default_property_set();
+    // The theme styles every built-in widget, so the calculator's keys and
+    // any control it grows later cannot disagree about color.
+    let theme = Theme {
+        app: role::surface(),
+        panel: role::surface(),
+        control: role::key(),
+        control_active: role::key_function(),
+        accent: role::key_operator(),
+        text: role::text(),
+        text_muted: role::text_muted(),
+        ..Theme::dark()
+    };
+    // Key states: no resting border, a light border on hover, a light
+    // overlay when pressed. Still per-app: a button role in the theme
+    // would carry it. See DESIGN.md D15, layer 4.
+    let mut default_properties = theme.property_set();
     let mut stack = PropertyStack::new();
     stack.push(Selector::new(), BorderColor::new(Color::TRANSPARENT));
     stack.push(
         Selector::new().with_hovered(true),
-        BorderColor::new(role::KEY_HOVER_BORDER),
+        BorderColor::new(role::key_hover_border()),
     );
     stack.push(
         Selector::new().with_active(true),
-        Background::Color(role::KEY_PRESSED),
+        Background::Color(role::key_pressed()),
     );
     default_properties.insert_stack::<masonry::widgets::Button>(stack);
 
@@ -430,7 +449,7 @@ pub(crate) fn run(event_loop: EventLoopBuilder) -> Result<(), EventLoopError> {
     let window_options = window_options.with_initial_inner_size(window_size);
     let app = Xilem::new_simple(data, app_logic, window_options)
         .with_default_properties(default_properties)
-        .with_default_base_color(role::SURFACE);
+        .with_default_base_color(role::surface());
     app.run_in(event_loop)?;
     Ok(())
 }
