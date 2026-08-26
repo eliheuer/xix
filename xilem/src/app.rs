@@ -12,10 +12,10 @@ use masonry_winit::app::{MasonryState, MasonryUserEvent, NewWindow};
 use tokio::runtime::Runtime as TokioRuntime;
 use winit::error::EventLoopError;
 
-use crate::core::map_state;
-use crate::window_options::WindowCallbacks;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::MasonryDriver;
+use crate::core::map_state;
+use crate::window_options::WindowCallbacks;
 use crate::{EventLoopBuilder, WidgetView, WindowId, WindowOptions, WindowView};
 
 /// The tokio runtime the app hands to views. Multi-threaded natively, current-thread on the web.
@@ -80,12 +80,7 @@ impl<State>
     where
         View: WidgetView<State>,
     {
-        Self::new_simple_with_tokio(
-            state,
-            logic,
-            window_options,
-            Arc::new(new_runtime()),
-        )
+        Self::new_simple_with_tokio(state, logic, window_options, Arc::new(new_runtime()))
     }
 
     /// Same as [`Self::new_simple`] but allows passing an existing tokio runtime.

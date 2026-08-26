@@ -176,12 +176,12 @@ pub use xilem_masonry::{
 mod app;
 #[cfg(not(target_arch = "wasm32"))]
 mod driver;
-mod window_options;
-mod window_view;
-#[cfg(target_arch = "wasm32")]
-mod web_shim;
 #[cfg(all(target_arch = "wasm32", feature = "web"))]
 pub mod web;
+#[cfg(target_arch = "wasm32")]
+mod web_shim;
+mod window_options;
+mod window_view;
 #[cfg(all(target_arch = "wasm32", feature = "web"))]
 pub use wasm_bindgen;
 #[cfg(all(target_arch = "wasm32", feature = "web"))]

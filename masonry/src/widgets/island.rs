@@ -298,7 +298,12 @@ impl Widget for Island {
         ctx.set_clip_path(size.to_rect());
     }
 
-    fn paint(&mut self, _ctx: &mut PaintCtx<'_>, _props: &PropertiesRef<'_>, painter: &mut Painter<'_>) {
+    fn paint(
+        &mut self,
+        _ctx: &mut PaintCtx<'_>,
+        _props: &PropertiesRef<'_>,
+        painter: &mut Painter<'_>,
+    ) {
         (self.paint)(painter, &self.viewport, self.size);
     }
 

@@ -34,9 +34,9 @@ use masonry::app::{
 };
 use masonry::core::keyboard::{Code, Key, KeyState};
 use masonry::core::{
-    ErasedAction, KeyboardEvent, Modifiers, PointerButton, PointerButtonEvent,
-    PointerEvent, PointerId, PointerInfo, PointerScrollEvent, PointerState, PointerType,
-    PointerUpdate, ScrollDelta, TextEvent, WidgetId, WindowEvent,
+    ErasedAction, KeyboardEvent, Modifiers, PointerButton, PointerButtonEvent, PointerEvent,
+    PointerId, PointerInfo, PointerScrollEvent, PointerState, PointerType, PointerUpdate,
+    ScrollDelta, TextEvent, WidgetId, WindowEvent,
 };
 use masonry::dpi::{PhysicalPosition, PhysicalSize};
 use masonry::imaging::record::{Scene, replay_transformed};
@@ -69,7 +69,10 @@ thread_local! {
 /// `run` must build the app and call [`Xilem::run_in`](crate::Xilem::run_in), exactly as
 /// the native entry point does. The canvas is sized to its CSS box times the device
 /// pixel ratio, receives focus on click, and follows the size of its box after that.
-pub fn mount(canvas: HtmlCanvasElement, run: impl FnOnce() -> Result<(), winit::error::EventLoopError>) {
+pub fn mount(
+    canvas: HtmlCanvasElement,
+    run: impl FnOnce() -> Result<(), winit::error::EventLoopError>,
+) {
     console_error_panic_hook::set_once();
     MOUNT_CANVAS.with(|slot| *slot.borrow_mut() = Some(canvas));
     run().expect("xilem web: app failed to start");
@@ -283,7 +286,9 @@ where
     fn drain_messages(&mut self) {
         loop {
             let next = self.messages.lock().unwrap().pop_front();
-            let Some((path, message)) = next else { break };
+            let Some((path, message)) = next else {
+                break;
+            };
             let result = self.dispatch_message(Vec::from(&*path), message.into());
             self.handle_message_result(result);
         }
@@ -292,17 +297,16 @@ where
     fn process_signals(&mut self) {
         loop {
             let next = self.signals.borrow_mut().pop_front();
-            let Some(signal) = next else { break };
+            let Some(signal) = next else {
+                break;
+            };
             match signal {
                 RenderRootSignal::Action(action, widget_id) => self.on_action(widget_id, action),
                 RenderRootSignal::RequestRedraw | RenderRootSignal::RequestAnimFrame => {
                     self.needs_redraw = true;
                 }
                 RenderRootSignal::SetCursor(icon) => {
-                    let _ = self
-                        .canvas
-                        .style()
-                        .set_property("cursor", icon.name());
+                    let _ = self.canvas.style().set_property("cursor", icon.name());
                 }
                 RenderRootSignal::ClipboardStore(_text) => {
                     // TODO(xix): navigator.clipboard.writeText; needs the Clipboard web-sys feature.
@@ -324,14 +328,17 @@ where
             self.scale = scale;
             self.canvas.set_width(size.width);
             self.canvas.set_height(size.height);
-            self.render_root.handle_window_event(WindowEvent::Rescale(scale));
-            self.render_root.handle_window_event(WindowEvent::Resize(size));
+            self.render_root
+                .handle_window_event(WindowEvent::Rescale(scale));
+            self.render_root
+                .handle_window_event(WindowEvent::Resize(size));
             self.needs_redraw = true;
         }
         let dt = Duration::from_secs_f64(((now_ms - self.last_frame_ms) / 1000.0).max(0.0));
         self.last_frame_ms = now_ms;
         if self.render_root.needs_anim() {
-            self.render_root.handle_window_event(WindowEvent::AnimFrame(dt));
+            self.render_root
+                .handle_window_event(WindowEvent::AnimFrame(dt));
         }
         self.drain_messages();
         self.process_signals();
@@ -550,14 +557,20 @@ fn install_listeners<State, Logic, WindowIter>(
     });
     listen!("pointerdown", web_sys::PointerEvent, |app, ev| {
         ev.prevent_default();
-        if let Some(target) = ev.target().and_then(|t| t.dyn_into::<HtmlCanvasElement>().ok()) {
+        if let Some(target) = ev
+            .target()
+            .and_then(|t| t.dyn_into::<HtmlCanvasElement>().ok())
+        {
             drop(target.set_pointer_capture(ev.pointer_id()));
             drop(target.focus());
         }
         app.borrow_mut().on_pointer_down(&ev);
     });
     listen!("pointerup", web_sys::PointerEvent, |app, ev| {
-        if let Some(target) = ev.target().and_then(|t| t.dyn_into::<HtmlCanvasElement>().ok()) {
+        if let Some(target) = ev
+            .target()
+            .and_then(|t| t.dyn_into::<HtmlCanvasElement>().ok())
+        {
             drop(target.release_pointer_capture(ev.pointer_id()));
         }
         app.borrow_mut().on_pointer_up(&ev);

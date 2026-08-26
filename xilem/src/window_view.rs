@@ -3,19 +3,19 @@
 
 use std::sync::Arc;
 
+use masonry::core::DefaultProperties;
 #[cfg(not(target_arch = "wasm32"))]
 use masonry::{theme::BACKGROUND_COLOR, util::debug_panic};
-use masonry::core::DefaultProperties;
 #[cfg(not(target_arch = "wasm32"))]
 use masonry_winit::app::{NewWindow, Window};
 
 use crate::WindowId;
 
 #[cfg(not(target_arch = "wasm32"))]
+use crate::InitialRootWidget;
+#[cfg(not(target_arch = "wasm32"))]
 use crate::core::{MessageCtx, Mut, ViewElement};
 use crate::core::{View, ViewMarker};
-#[cfg(not(target_arch = "wasm32"))]
-use crate::InitialRootWidget;
 use crate::{AnyWidgetView, Color, MasonryRoot, ViewCtx, WidgetView, WindowOptions};
 
 /// A view representing a window.

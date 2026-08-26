@@ -356,9 +356,13 @@ fn choice_section(gallery: &Gallery) -> impl WidgetView<Gallery> + use<> {
             slot(
                 t,
                 "Checkbox",
-                checkbox("Show hidden items", gallery.checked, |gallery: &mut Gallery, on| {
-                    gallery.checked = on;
-                }),
+                checkbox(
+                    "Show hidden items",
+                    gallery.checked,
+                    |gallery: &mut Gallery, on| {
+                        gallery.checked = on;
+                    },
+                ),
             ),
             slot(
                 t,

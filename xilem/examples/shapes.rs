@@ -268,9 +268,12 @@ fn tool_button(text_: &'static str, tool: Tool, active: bool) -> impl WidgetView
         (field(), text())
     };
     sized_box(
-        button(label(text_).text_size(TextSize::Body).color(fg), move |app: &mut App| {
-            app.tool = tool;
-        })
+        button(
+            label(text_).text_size(TextSize::Body).color(fg),
+            move |app: &mut App| {
+                app.tool = tool;
+            },
+        )
         .background_color(bg)
         .corner_radius(Radius::Md),
     )
@@ -285,7 +288,10 @@ fn field_view(name: &'static str, value: String, which: usize) -> impl WidgetVie
                 .background_color(field())
                 .corner_radius(Radius::Sm),
         )
-        .dims(Dimensions::new(Dim::Stretch, Dim::from(ControlSize::Control))),
+        .dims(Dimensions::new(
+            Dim::Stretch,
+            Dim::from(ControlSize::Control),
+        )),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Start)
     .gap(Space::Xs)
@@ -351,7 +357,9 @@ fn canvas() -> impl WidgetView<App> + use<> {
                 }
                 for (i, shape) in shapes.iter().enumerate() {
                     let rect = to_screen.transform_rect_bbox(shape.rect);
-                    painter.fill(rect.to_rounded_rect(4.0), swatch(shape.color)).draw();
+                    painter
+                        .fill(rect.to_rounded_rect(4.0), swatch(shape.color))
+                        .draw();
                     if Some(i) == selected {
                         painter
                             .stroke(&rect.to_rounded_rect(4.0), &Stroke::new(2.0), text())
