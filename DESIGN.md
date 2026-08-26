@@ -1206,11 +1206,36 @@ roles is how token systems end up with four hundred of them. Every role
 has to earn its name, and `xix theme preview` rendering the whole
 gallery is the check.
 
+**Settled: the region table is themeable, partially, and validated.**
+
+The shipped table is the default, and an application with no theme file
+gets it. A theme states any subset of rows and the rest stay on the
+default, so changing toolbars does not mean restating the other eight
+regions. Overrides are scale steps (`"Md"`), never numbers, so a theme
+cannot land off the grid either. On load, the merged table is checked
+against the nesting invariant, and a table where a region is looser than
+one that can contain it fails with a file and a line rather than
+producing a screen where grouping reads backwards.
+
+That check is what makes exposure survivable, and exposure is worth
+having: a font editor and a chat application want different rhythms, not
+only different hues. Density alone cannot express that, because density
+scales every region together.
+
+The division of authority inside this is the part that decides whether
+it works:
+
+- **Which region a container is, is the application's call.** If a group
+  needs to be tighter, it is a different kind of container: say
+  `Region::Card` instead of `Region::Section`, or add a region to the
+  table. That is vocabulary, so an agent can write it, and the theme
+  still decides what it resolves to.
+- **What a region measures, is the theme's call, and only the theme's.**
+  There is no per-use-site spacing override, in any form. The moment
+  code can say "this panel, 6 px", the theme file stops deciding how the
+  product looks and the padding conversation moves back into diffs.
+
 **Open questions.**
-- Does the region table belong in the theme file at all, or is it
-  framework policy that only density scales? Exposing it is powerful
-  and is also the fastest way for someone to make an incoherent
-  product. The invariant check is what makes exposing it survivable.
 - How far does "behavior is themeable" go? Control sizes and hit
   targets clearly. Scroll physics and animation curves probably.
   Keyboard behavior, no: that is the action layer, and it is a keymap
