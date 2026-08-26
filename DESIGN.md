@@ -1170,11 +1170,43 @@ that a Tailwind class is a string resolved by a build step, and a
 kernel token is a value the compiler checks, so the escape hatch has to
 be deliberate rather than a typo away.
 
-**Open questions.**
+**Settled: one theme per window, and no inheritance.** The theme is held
+on the render root. A widget's appearance depends on its type, its local
+properties, its classes, and that one theme, and on nothing above it in
+the tree. Resolution stays local, which is what makes it cacheable,
+testable, and explainable: you can look at a widget and say why it looks
+that way without walking its ancestors.
 
-- Where does the resolved style live: a side table keyed by widget id,
-  or a property on the widget? The side table parallelizes and the
-  property is simpler.
+This was not the obvious answer, so the reasoning is worth keeping. The
+cases that usually motivate scoped themes all collapse into naming. A
+paper-white specimen panel in a dark font editor is not the app theme
+overridden, it is its own pair of roles. A destructive dialog is roles.
+A denser inspector is a region with its own steps. Stating those as
+roles and regions is more honest than inheriting a value and then
+fighting it.
+
+The strongest argument for inheritance also dissolved on inspection.
+Built-in labels rendering a size off from the body text beside them
+(D14) does not need a cascade: make text size a property with a per
+widget-type default from the theme, exactly as `ContentColor` works
+today, and a label that states nothing gets the theme's body size.
+
+What we give up: a component cannot be reused in two contexts without
+being told which one it is in. Today that is a vocabulary parameter and
+it is fine. It becomes painful only with third-party widgets we did not
+write, which a plugin-capable node editor would eventually hit. The door
+stays open cheaply, because Masonry already has user-defined class
+strings and selectors that match them: a subtree that must differ can
+carry a class, and the theme styles by class. Making a container push a
+class to its descendants is an additive change later, and far cheaper
+than a value cascade.
+
+The cost we accept is role naming discipline. Pushing variation into
+roles is how token systems end up with four hundred of them. Every role
+has to earn its name, and `xix theme preview` rendering the whole
+gallery is the check.
+
+**Open questions.**
 - Does the region table belong in the theme file at all, or is it
   framework policy that only density scales? Exposing it is powerful
   and is also the fastest way for someone to make an incoherent
