@@ -58,16 +58,26 @@ These come first because every later choice is tested against them.
 
 ## 2. Why a fork, in one paragraph
 
-Xilem's own maintainers say its current architecture "isn't remotely
-close to working" for non-trivial apps and needs "large, sweeping
-changes, even if that means throwing out a lot of code" (section 5).
-Masonry underneath it is sound, well tested, and close to what we
-need. GPUI shows what an application layer for this class of app
-looks like, but GPUI is a Zed internal, tracks Zed main, is not
-built on the Linebender stack, and has its own rendering limits for
-path-heavy scenes (section 6). Nobody is building the combination we
-need: Masonry plus Vello plus a real application layer plus a
-reactive layer that stays idiomatic Rust. That combination is xix.
+Xilem writes an 81-line todo app and a 2,393-line interactive app, the
+best and the worst numbers in the ecosystem survey (section 14). The
+complexity budget is being spent where the work is not. Its own
+maintainers say the current architecture "isn't remotely close to
+working" for non-trivial apps and needs "large, sweeping changes, even
+if that means throwing out a lot of code" (section 5). Masonry
+underneath it is sound, well tested, sits on every part of the stack the
+ecosystem converged on (wgpu, parley with HarfRust, AccessKit), and is
+close to what we need. GPUI shows what an application layer for this
+class of app looks like, but it is a Zed internal, tracks Zed main, is
+not on the Linebender stack, has accessibility unreleased and disabled,
+and has rendering limits for path-heavy scenes (section 6). So: **keep
+what makes the 81-line todo app possible, and fix what makes an
+interactive application cost 2,393 lines.** That is xix.
+
+Concretely, the fix is the four layers upstream left to every
+application: a design system the framework owns, a canvas primitive,
+the shell and action layer, and a real parts list. The reactive layer
+gets smaller, not cleverer. Consistent output from an agent is a
+consequence of the first of those, not the pitch.
 
 ## 3. Target applications and what they demand
 
@@ -617,19 +627,24 @@ problem rather than the `State` parameter.
 - Compile time of runebender-xilem's view layer alone, and the
   incremental rebuild time after a one-line view change. The review
   claims generics "can blow up compile times"; get numbers.
-- Whether Masonry's `Transformed` keeps pointer hit testing correct
-  under pan/zoom (the node editor requirement GPUI cannot meet).
+- ~~Whether Masonry's `Transformed` keeps pointer hit testing correct
+  under pan/zoom.~~ **Answered 2026-08-24**: the `Island` widget owns
+  the viewport and converts pointer positions itself, so hit testing
+  happens in document coordinates and never depends on a transform
+  property. Tests cover zoom anchoring in both y directions.
 - Whether the new layer system plus `understory_overlay` can host a
   context menu and a menu bar without a child window.
 - Vello versus GPUI on a screen of 800 glyph outlines: frame time,
   and behavior at the vertex counts that broke GPUI.
 - How much of upstream Masonry changed between `7819435e` and main
   today, and how long one rebase takes.
-- Prototype: resolve one token (`Space::M` under a `Density` and a
-  region) through Masonry's `Property` cascade and through
-  `understory_style`, and compare API, cost, and how each handles
-  inheritance and animation slots. Decides whether the design kernel
-  sits on Masonry properties, Understory properties, or a bridge.
+- ~~Prototype: resolve one token through Masonry's `Property` cascade
+  versus `understory_style`.~~ **Answered 2026-08-25**: the kernel sits
+  on Masonry properties. They already carry per-type defaults, selector
+  stacks with classes and pseudo-classes, and a per-widget cache that
+  records which selector inputs mattered. D17 then removed the
+  inheritance question entirely: one theme per window, resolution stays
+  local, so no cascade is needed on either side.
 - Prototype: a static `View` with `ViewSequence` folded in and
   compile-time element counts, plus tick-based change detection on
   Masonry properties. Compare compile time, error messages, and
@@ -638,76 +653,103 @@ problem rather than the `State` parameter.
   bare winit loop) with no framework-owned thread-locals, to prove
   principle 7 before the API hardens.
 
-## 10. Next steps
+## 10. The plan
 
-Decided 2026-08-22: fork now and learn from examples. Upstream
-imported at `ce7b04d2` with history; crate names unchanged so
-upstream merges stay cheap; stable toolchain pinned.
+Rewritten 2026-08-26 after the ecosystem survey (section 14). The order
+below is set by one measurement: Xilem writes an 81-line todo app and a
+2,393-line interactive app. Everything ranked high here attacks the
+second number.
 
-Example roadmap, in order:
+### 10.1 Landed
 
-1. **Upstream examples, made good.** Rework the existing Xilem
-   examples (`calc`, `stopwatch`, `to_do_mvc`, `emoji_picker`,
-   `http_cats`, `widgets`, `lists`, `scroll`, `flex`, `canvas`,
-   `transforms`, `multiple_windows`, `external_event_loop`, `mason`,
-   `state_machine`, `memoization`, `variable_clock`, `virtual_cats`,
-   `slider_demo`, `components`, `elm`) and the Masonry examples
-   (`calc_masonry`, `hello_masonry`, `to_do_list`, `custom_widget`,
-   `grid_masonry`, `layers`, `simple_image`, `split_playground`,
-   `virtual_fizzbuzz`, `gallery`) so each looks designed: spacing,
-   type, color, and structure as the kernel would produce them. This
-   is where the token and layout API gets found, by need, one
-   example at a time. Each reworked example is a before and after
-   screenshot pair.
-2. **Examples that show xix's strengths.** An SVG editor (canvas kit:
-   viewport, tools, hit testing, selection, undo), a basic ComfyUI-
-   style node editor (transform groups with real widgets inside,
-   wires, `understory_node_graph`), a simple paint program (retained
-   scene, damage regions, brush gestures), a pixel art editor (grid
-   canvas, palette, zoom, tool palette, a raw image island).
-3. **Placehero** stays as upstream's dogfooding app until the
-   agentic programming tool replaces it.
+- **The fork.** Upstream imported at `ce7b04d2` with history, crate
+  names unchanged so merges stay cheap, stable toolchain pinned.
+- **The design kernel.** `Space`, `ControlSize`, `Stroke`, `Radius`,
+  `TextSize`, `Region`, with conversions into the property types, so
+  the styling APIs take vocabulary in place of numbers.
+- **Regions.** `column(Region::Panel, ..)` and `row(Region::Toolbar,
+  ..)`: containers derive gap and inset from what they are. Two
+  invariants as unit tests (unpainted regions have no inset; an outer
+  gap is never smaller than an inner one).
+- **The theme as a value.** `masonry::theme::Theme` holds the roles and
+  kernel steps every built-in widget styles itself from;
+  `default_property_set()` is `Theme::dark().property_set()`.
+- **The island.** A retained, pannable, zoomable surface that owns the
+  viewport and reports gestures in document coordinates.
+- **Examples that argue.** `calc` (no raw pixels left), `app_shell`,
+  `shapes`, `widgets`, `tokens`. Each records what it forced.
+- **The browser driver.** Masonry with Vello CPU into a `<canvas>`, no
+  winit, no GPU, no atomics. Demos run in the blog post.
+- **Runebender on xix.** Multi-master editor with real interpolation;
+  spacing decisions in its panels went from 54 to 4.
+- **Supply chain.** cargo-vet, seven-day publish age, SHA-pinned
+  actions, no tokens in build-script jobs.
 
-Progress: `calc` reworked 2026-08-22 (`screenshots/before/calc.png`
-versus `screenshots/calc.png`). What it forced: tokens as consts
-(space, radius, text, role), key roles with shared hover and pressed
-states, relational spacing (inset 20, section gap 12, key gap 8),
-`Dimensions::STRETCH` to fill grid cells, end-aligned display text,
-and one API trap: `label(..).color(..)` wraps the view in a `Prop`,
-after which `Label`'s own builders are gone, so builder order matters.
-Missing: tabular figures, and an event-injection path in the
-screenshot tool so a render can show a state other than the initial
-one.
+### 10.2 Next, in order
 
-Browser demos (2026-08-22): `xilem` gained a `web` feature, a small
-driver that mounts an app into a `<canvas>`, feeds DOM pointer and
-keyboard events to a `RenderRoot`, rasterizes with Vello CPU, and
-blits with `putImageData`. No winit, no GPU, no atomics, stable
-Rust, 2.9 MB of wasm for calc. `masonry_winit` and tokio's
-multi-thread runtime are gated off on wasm32; `web_shim.rs` supplies
-`WindowId` and the event-loop type aliases so examples compile
-unchanged plus a 5-line `mount` export. `tools/web-build.sh` and
-`tools/web-test.sh` (headless Chrome with synthetic pointer events)
-close the loop. `calc` and a new `tokens` example (density, radius,
-hue sliders restyling a form through tokens) run inside the blog
-post through an Astro island (`XixDemo.astro`).
+1. **A real text input and editor.** The survey records that both Xilem
+   and gpui make you hand-build one, and that it is why gpui's todo app
+   is 230 lines against iced's 74. It is the most frequently rebuilt
+   widget in the ecosystem. Runebender needs it anyway for glyph names,
+   metric fields, and the text tool. Selection, IME, double-click and
+   drag selection, undo, and a single-line and multi-line mode from one
+   implementation.
+2. **The shell facade, as a standalone crate.** The survey's own
+   conclusion is that a maintained winit-compatible facade for menubar,
+   tray, hotkeys, file dialogs, and notifications "would give every
+   winit-based framework that for free". That is our menu problem (D6)
+   generalized. Build it outside xix so iced, egui, floem, and upstream
+   Xilem can use it. Its central problem is the Linux coupling the
+   survey prices out: muda menubars need GTK windows, tray-icon needs a
+   parallel GTK loop, global-hotkey is X11 only. On top of it, the
+   window-level action layer: actions as plain values, keymaps as data,
+   dispatch along the focus chain, one action list feeding both the
+   keymap and the menu.
+3. **The parts list.** Built from the kernel so a part cannot be off
+   the scale: list row, field, section header, panel, card, dialog,
+   toast, table, tree. A part graduates from an application into the
+   framework when a second application needs it. Runebender's `ui.rs`
+   is the first candidate set.
+4. **The reactive layer, made small.** Remove the `State` parameter:
+   views build from `&State`, handlers return typed messages, heavy
+   surfaces are islands that own their view state and emit outward.
+   This is the piece that makes "Xilem done right" an honest claim
+   rather than a slogan, and both ports converged on islands by force
+   before it was a decision.
+5. **Theme files and the lint.** `theme.toml` and `xix.toml` with a
+   published schema, validated on load (roles resolve, contrast floors
+   met, region table satisfies the nesting invariant), hot reloaded as
+   data. `xix lint` fails on appearance expressed in application code.
+   Without the lint the separation of authority (D17) is a convention,
+   not a rule.
+6. **Keep the hedges alive.** The no-winit browser path is proof the
+   widget engine is not welded to the windowing layer, and winit's
+   maintenance risk is real (1,225 reverse dependencies, a 0.31 beta
+   open seven months, a contributor on a burnout hiatus). Keep
+   `tools/web-test.sh` in the loop.
 
-Rules while doing this: headless screenshots for review (no GUI
-launches while the user is active), one commit per example, and
-write what each example forced into the framework in a short note
-at the top of the example file.
+### 10.3 Explicitly not doing
 
+Scope discipline, because the failure mode of this project is the one
+the Xilem review names: solving every problem abstractly.
 
-1. Discuss and decide section 8. Record decisions here.
-2. Run the measurements in section 9 and record results here.
-3. Write `docs/problems.md` (public, polished version of sections 4
-   and 5) and `docs/design.md` (the chosen architecture, with the
-   application-layer API sketched against Runebender's needs).
-4. Import the upstream workspace at a pinned rev with history,
-   remove what section 8.1 drops, rename, and get it building on
-   stable.
-5. Port runebender-xilem to xix as the first real test, tracking
-   `PARITY.md` from runebender-gpui as the bar.
+- No CSS selector engine, no specificity, no textual cascade. Scope is
+  the tree (D17).
+- No second language and no live-editing runtime for code. Live editing
+  is for data.
+- No ECS world or scheduler. Take ids, typed components, and change
+  ticks; leave the rest (section 12).
+- No reactive-architecture research. Pick the smallest static model
+  that fits Rust and move on (D9).
+- No new windowing layer. Contribute to winit instead, and keep the
+  browser path as the hedge.
+
+### 10.4 Still to write down
+
+1. Decide the remaining options in section 8 and record them here.
+2. Run the measurements in section 9 that are still open, and record
+   the numbers.
+3. `docs/problems.md`, the public version of sections 4, 5, and 14.
 
 ## 11. Collected comments
 
