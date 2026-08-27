@@ -1110,6 +1110,135 @@ https://github.com/longbridge/gpui-component,
 https://hacks.mozilla.org/2017/08/inside-a-super-fast-css-engine-quantum-css-aka-stylo/,
 https://github.com/servo/stylo
 
+## 14. The 2026 ecosystem survey, and what it changes
+
+An independent survey (goldstrikearch, updated August 2026) measured ten
+frameworks the empirical way: eight comparable todo apps, two
+interaction-heavy apps (a dashboard and a kanban board), dependency
+trees across eighty apps, shell integration tests, an eleven-line
+multilingual text corpus, plus binary size, build time, memory, and CPU.
+It is the first thing in this space with numbers rather than opinions,
+and it moves several of our decisions.
+
+### 14.1 The number that settles the positioning
+
+Xilem writes an **81-line todo app** and builds it in 28 seconds, second
+only to iced on both. Xilem also needs **2,393 lines for the two
+interaction-heavy apps, the highest of any framework measured.**
+
+That is our own D9 finding, measured by someone else, on different
+applications, with no knowledge of the Runebender ports. The reactive
+layer is excellent at the thing a todo app exercises and the framework
+falls apart on the thing a real application exercises. It is the
+strongest single argument for the fork's thesis: the complexity budget
+is being spent where the work is not.
+
+It also disciplines the pitch. "Xilem done right" does not mean a
+cleverer reactive layer. It means: keep what makes an 81-line todo app
+possible, and fix what makes an interactive app cost 2,393 lines.
+
+### 14.2 Masonry already sits on every convergence winner
+
+The survey's clearest finding is that the ecosystem is consolidating
+bottom-up, and names the winners: **wgpu** for the GPU layer (~1,270
+reverse dependencies), **HarfRust** as the shared shaper (adopted by
+cosmic-text, parley, and epaint inside twelve months), **AccessKit** as
+the accessibility standard, and **taffy** as the cross-framework layout
+engine (8.9M downloads).
+
+Masonry is on wgpu, on parley with fontique and HarfRust underneath, and
+on AccessKit. It is not on taffy, because it has its own layout, which
+the survey lists under Xilem's weaknesses but which is a defensible
+divergence rather than a gap. (The survey says Xilem uses taffy; our
+dependency tree has no taffy in it at all.)
+
+Against that, the survey records that **gpui's AccessKit support is
+unreleased and currently disabled in Zed**, and that gpui's text uses
+its own `line_layout` where "quality differs per OS". For professional
+software, and for a font editor above all, those are not small. Choosing
+the Linebender stack was correct for reasons independent of
+architecture, and this is the evidence.
+
+### 14.3 The parts gap is measured, not felt
+
+Both frameworks we care about make you hand-build the basics. The survey
+records gpui as having "low-level elements, no reusable first-party
+input widget", which is why its todo app is 230 lines against iced's 74.
+Xilem's entry says "hand-built text input with double-click plumbing".
+
+So the parts list (D15, layer 4) is not a nice-to-have that follows the
+kernel. It is co-equal with it, and the survey says which part matters
+most: **a real text input and editor**. It is the single most
+frequently hand-rebuilt widget in the ecosystem, and Runebender needs a
+good one anyway for glyph names, metrics fields, and the text tool.
+
+### 14.4 The missing layer, named by someone else
+
+The survey's overall conclusion includes this: a maintained
+winit-compatible facade for shell integration (menubar, tray, hotkeys,
+file dialogs, notifications) "would give every winit-based framework
+that for free."
+
+That is D6, the menu problem, generalized from our application to the
+whole ecosystem. It reframes the work: an action and menu layer is not a
+Xix feature, it is the ecosystem's stated missing layer, and building it
+as a separate winit-compatible crate would serve iced, egui, floem, and
+Xilem alike. It is the highest-leverage thing this project could
+contribute upstream, and it is worth more than any argument about views.
+
+The survey also prices the Linux tax we would be taking on, which our
+muda plan did not account for: muda menubars require GTK windows,
+tray-icon needs a parallel GTK event loop, and global-hotkey is X11
+only. A facade that hides that is exactly why the facade is missing.
+
+### 14.5 On theming, we are the contrarian
+
+The survey's styling table splits the field: iced, egui, gpui, xilem,
+and dioxus are "in-house"; tauri, slint, and floem use CSS; vizia has a
+CSS engine with transitions and a "mature CSS/style story". Nobody has
+what D17 proposes, which is a closed typed vocabulary with regions and
+no selector matching.
+
+Two things follow. First, vizia is proof that a CSS-shaped engine is
+affordable in a Rust GUI, so our no-selector decision has to be argued
+on predictability rather than cost. Second, vizia's listed weaknesses
+are interaction bugs ("only fires actions on hovered entity", a click on
+a card label silently failing), not styling ones. A good style story
+does not save a framework, which is a useful corrective to how much
+weight we put on the design layer as the headline.
+
+### 14.6 Risk, and an accidental hedge
+
+Fifteen of twenty-one load-bearing crates are rated amber or red on
+maintenance risk: concentrated authorship, no institutional funding.
+**winit** has 1,225 reverse dependencies, its 0.31 beta has been open
+seven months, and a prolific contributor announced a burnout hiatus.
+AccessKit's STF funding concluded in 2024 with no successor grant found.
+
+We are pinned to winit 0.30.13 through masonry_winit, so this is our
+risk too. The hedge exists by accident: the browser driver runs the same
+Masonry tree with Vello CPU and no winit at all, which is proof the
+widget engine is not welded to the windowing layer. Keeping that path
+working is cheap insurance, and the supply-chain work already done
+(cargo-vet, a seven-day publish age, SHA-pinned actions) is the other
+half.
+
+### 14.7 What this changes in the plan
+
+1. Positioning is settled by 14.1, and stated in the frameworkʼs own
+   terms: keep the 81-line todo app, fix the 2,393-line application.
+2. The parts list moves up to sit beside the kernel, and **a real text
+   input is the first part**, not the tenth.
+3. The action and menu layer is reframed as a **standalone
+   winit-compatible shell facade**, designed to be usable by frameworks
+   that are not Xix, with the Linux GTK coupling as its central problem
+   rather than an afterthought.
+4. The design layer keeps its place as the differentiator but not as the
+   whole pitch, per 14.5.
+5. Keep the no-winit browser path alive as a deliberate hedge, per 14.6.
+
+Source: https://goldstrikearch.github.io/rust-gui-desktop-ecosystem-state/
+
 ## Sources
 
 - runebender-xilem: `context/*.md`, `ARCHITECTURE.md`, `LLMS.md`,
